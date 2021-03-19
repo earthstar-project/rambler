@@ -116,10 +116,26 @@ function useTranslatedPlacedEdges(
   return placedEdges.map((edge) => ({
     ...edge,
     data: {
-      x: edge.data.x + viewX,
-      y: edge.data.y + viewY,
+      x: edge.data.x - viewX,
+      y: edge.data.y - viewY,
     },
   }));
+}
+
+function getBoardCorners(
+  edges: (Omit<EdgeContent, "data"> & { data: Position })[]
+) {
+  return edges.reduce(
+    (acc, edge) => {
+      return {
+        top: Math.min(edge.data.y, acc.top),
+        left: Math.min(edge.data.x, acc.left),
+        bottom: Math.max(edge.data.y, acc.bottom),
+        right: Math.max(edge.data.x, acc.right),
+      };
+    },
+    { top: 0, left: 0, bottom: 0, right: 0 }
+  );
 }
 
 function Board() {
@@ -129,14 +145,79 @@ function Board() {
   const [viewY, setViewY] = React.useState(0);
 
   const translatedEdges = useTranslatedPlacedEdges(viewX, viewY, BOARD_PATH);
+  const edges = useEdges<Position>({
+    source: BOARD_PATH,
+    kind: "PLACED",
+  });
+
+  const boardCorners = getBoardCorners(edges);
+
+  const canvasRef = React.useRef<HTMLDivElement>(null);
+
+  const intrinsicWidth = boardCorners.right - boardCorners.left;
+  const intrinsicHeight = boardCorners.bottom - boardCorners.top;
+
+  // want to add the difference between board edges and viewport edges
+  const viewportTopEdge = viewY;
+  const viewportLeftEdge = viewX;
+  const viewportBottomEdge =
+    (canvasRef.current?.getBoundingClientRect().height || 0) + viewY;
+  const viewportRightEdge =
+    (canvasRef.current?.getBoundingClientRect().width || 0) + viewX;
+
+  const topBoardEdgeDifference = boardCorners.top - viewportTopEdge;
+  const leftBoardEdgeDifference = boardCorners.left - viewportLeftEdge;
+  const rightBoardEdgeDifference = viewportRightEdge - boardCorners.right;
+  const bottomBoardEdgeDifference = viewportBottomEdge - boardCorners.bottom;
+
+  const boardWidth =
+    Math.max(leftBoardEdgeDifference, 0) +
+    intrinsicWidth +
+    Math.max(rightBoardEdgeDifference, 0);
+  const boardHeight =
+    Math.max(topBoardEdgeDifference, 0) +
+    intrinsicHeight +
+    Math.max(bottomBoardEdgeDifference, 0);
+
+  console.group(`${viewX} ${viewY}`);
+
+  console.log({ intrinsicWidth, intrinsicHeight });
+
+  console.log({
+    viewportTopEdge,
+    viewportLeftEdge,
+    viewportRightEdge,
+    viewportBottomEdge,
+  });
+
+  console.log(boardCorners);
+
+  console.log({
+    topBoardEdgeDifference,
+    leftBoardEdgeDifference,
+    rightBoardEdgeDifference,
+    bottomBoardEdgeDifference,
+  });
+
+  console.log({ boardWidth, boardHeight });
+
+  console.groupEnd();
+
+  React.useEffect(() => {
+    if (canvasRef.current && viewX === 0 && viewY === 0) {
+      canvasRef.current.scrollTop = Math.abs(boardCorners.top);
+      canvasRef.current.scrollLeft = Math.abs(boardCorners.left);
+    }
+  }, [boardCorners.top, boardCorners.left, viewX, viewY]);
 
   return (
     <div>
       <div
+        ref={canvasRef}
         id={"canvas"}
         style={{
           position: "relative",
-          background: "black",
+          background: "blue",
           height: "100vh",
           width: "100vw",
           overflow: "auto",
@@ -160,8 +241,8 @@ function Board() {
           const x = clickEvent.clientX - left;
           const y = clickEvent.clientY - top;
 
-          const translatedX = x - viewX;
-          const translatedY = y - viewY;
+          const translatedX = x + viewX;
+          const translatedY = y + viewY;
 
           console.log({
             x,
@@ -195,10 +276,10 @@ function Board() {
         <div
           id={"board"}
           style={{
-            background: "#e9e9e9",
+            background: "#eaeaea",
             pointerEvents: "none",
-            width: `calc(100% + ${Math.abs(viewX)}px)`,
-            height: `calc(100% + ${Math.abs(viewY)}px)`,
+            width: boardWidth,
+            height: boardHeight,
           }}
         ></div>
         <div
@@ -209,7 +290,8 @@ function Board() {
           <div
             key={edge.dest}
             style={{
-              border: "1px solid red",
+              border: "2px solid black",
+              borderRadius: "50%",
               top: edge.data.y,
               left: edge.data.x,
               position: "fixed",
