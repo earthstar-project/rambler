@@ -8,6 +8,7 @@ import {
 } from "earthstar";
 import {
   EarthstarPeer,
+  useDocument,
   useStorage,
   useSubscribeToStorages,
 } from "react-earthstar";
@@ -17,7 +18,9 @@ import {
   GraphQuery,
   writeEdge,
 } from "earthstar-graph-db";
+import useResizeObserver from "use-resize-observer";
 import useDeepCompareEffect from "use-deep-compare-effect";
+import { useDebounce } from "use-debounce";
 
 import "./App.css";
 
@@ -90,9 +93,9 @@ function useEdges<EdgeData>(
     });
   }, [dest, kind, owner, source, storage]);
 
+  // This is really awful because it triggers every single time any document in the storage changes. Need to find a way to subscribe to edges...
   useSubscribeToStorages({
     workspaces: storage ? [storage.workspace] : [],
-
     onWrite,
   });
 
@@ -122,6 +125,8 @@ function useTranslatedPlacedEdges(
   }));
 }
 
+// Get the coordinates of the top left and bottom right of the board using the document placements within it
+// TODO: take doc sizes into account for bottom right corner.
 function getBoardCorners(
   edges: (Omit<EdgeContent, "data"> & { data: Position })[]
 ) {
@@ -138,6 +143,34 @@ function getBoardCorners(
   );
 }
 
+// Determine what kind of node is at the end of an edge and how to render it
+type EdgeRenderType = "text" | "unknown";
+
+// e.g. 'starts with '/lobby' so render a speech bubble
+// ends with .midi so render a music player
+// is in /todo/ so knows to render todo stuff
+function getEdgeRenderType<EdgeData>(
+  edge: Omit<EdgeContent, "data"> & EdgeData
+): EdgeRenderType {
+  if (edge.dest.endsWith(".txt")) {
+    return "text";
+  }
+
+  return "unknown";
+}
+
+function renderEdge<EdgeData>(edge: Omit<EdgeContent, "data"> & EdgeData) {
+  switch (getEdgeRenderType(edge)) {
+    case "text":
+      return <TextNode edge={edge} />;
+    default:
+      return (
+        <div style={{ border: "2px solid black", borderRadius: "50%" }}></div>
+      );
+  }
+}
+
+// board component which manages the virtual canvas space
 function Board() {
   const storage = useStorage(WORKSPACE_ADDR);
 
@@ -154,6 +187,7 @@ function Board() {
 
   const canvasRef = React.useRef<HTMLDivElement>(null);
 
+  // the size of the board as determined by its placed contents
   const intrinsicWidth = boardCorners.right - boardCorners.left;
   const intrinsicHeight = boardCorners.bottom - boardCorners.top;
 
@@ -179,30 +213,6 @@ function Board() {
     intrinsicHeight +
     Math.max(bottomBoardEdgeDifference, 0);
 
-  console.group(`${viewX} ${viewY}`);
-
-  console.log({ intrinsicWidth, intrinsicHeight });
-
-  console.log({
-    viewportTopEdge,
-    viewportLeftEdge,
-    viewportRightEdge,
-    viewportBottomEdge,
-  });
-
-  console.log(boardCorners);
-
-  console.log({
-    topBoardEdgeDifference,
-    leftBoardEdgeDifference,
-    rightBoardEdgeDifference,
-    bottomBoardEdgeDifference,
-  });
-
-  console.log({ boardWidth, boardHeight });
-
-  console.groupEnd();
-
   React.useEffect(() => {
     if (canvasRef.current && viewX === 0 && viewY === 0) {
       canvasRef.current.scrollTop = Math.abs(boardCorners.top);
@@ -217,7 +227,7 @@ function Board() {
         id={"canvas"}
         style={{
           position: "relative",
-          background: "blue",
+          background: "#eaeaea",
           height: "100vh",
           width: "100vw",
           overflow: "auto",
@@ -244,17 +254,11 @@ function Board() {
           const translatedX = x + viewX;
           const translatedY = y + viewY;
 
-          console.log({
-            x,
-            y,
-            translatedX,
-            translatedY,
-          });
-
           const docPath = `${TRIPLEX_DIR}/${Date.now()}.txt`;
 
           const writeResult = await storage?.set(TEST_AUTHOR, {
-            content: "Test!",
+            content:
+              "It'd be nice to see what one of these things looks like when it has longer text. Is a paragraph really so much to ask for?",
             format: "es.4",
             path: docPath,
           });
@@ -290,15 +294,87 @@ function Board() {
           <div
             key={edge.dest}
             style={{
-              border: "2px solid black",
-              borderRadius: "50%",
               top: edge.data.y,
               left: edge.data.x,
               position: "fixed",
             }}
-          ></div>
+          >
+            {renderEdge(edge)}
+          </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// a component for rendering a text node. extremely wip.
+function TextNode<EdgeData>({
+  edge,
+}: {
+  edge: Omit<EdgeContent, "data"> & EdgeData;
+}) {
+  const storage = useStorage();
+  const [textDoc] = useDocument(edge.dest);
+  const { ref, height, width } = useResizeObserver();
+
+  // TODO: pull out all this sizing behaviour into a hook/component that can be used on many components
+  const [sizedEdge] = useEdges<Size>({
+    source: edge.source,
+    dest: edge.dest,
+    kind: "SIZED",
+  });
+
+  const [debouncedHeight] = useDebounce(height, 1000);
+  const [debouncedWidth] = useDebounce(width, 1000);
+
+  React.useEffect(() => {
+    if (!storage) {
+      return;
+    }
+
+    if (!debouncedHeight || !debouncedWidth) {
+      return;
+    }
+
+    if (
+      debouncedHeight === sizedEdge?.data.height &&
+      debouncedWidth === sizedEdge?.data.width
+    ) {
+      return;
+    }
+
+    console.log("writing sized edge...");
+    console.log(debouncedHeight, debouncedWidth);
+
+    writeEdge(storage, TEST_AUTHOR, {
+      data: { width: debouncedWidth, height: debouncedHeight },
+      dest: edge.dest,
+      source: edge.source,
+      kind: "SIZED",
+      owner: "common",
+    });
+  }, [
+    debouncedHeight,
+    debouncedWidth,
+    edge.dest,
+    edge.source,
+    storage,
+    sizedEdge?.data.height,
+    sizedEdge?.data.width,
+  ]);
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        background: "white",
+        resize: "both",
+        overflow: "auto",
+        width: sizedEdge?.data.width || "auto",
+        height: sizedEdge?.data.height || "auto",
+      }}
+    >
+      {textDoc?.content}
     </div>
   );
 }
