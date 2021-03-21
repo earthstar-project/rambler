@@ -105,38 +105,28 @@ function useEdges<EdgeData>(
 type Position = { x: number; y: number };
 type Size = { width: number; height: number };
 
-// viewX and viewY are the positions of the viewport's top left edge relative to the top left point of the board.
-function useTranslatedPlacedEdges(
-  viewX: number,
-  viewY: number,
-  boardPath: string
-) {
+// Get the coordinates of the top left and bottom right of the board using the document placements within it
+// TODO: take doc sizes into account for bottom right corner.
+function useBoardCorners(boardPath: string) {
   const placedEdges = useEdges<Position>({
     source: boardPath,
     kind: "PLACED",
   });
 
-  return placedEdges.map((edge) => ({
-    ...edge,
-    data: {
-      x: edge.data.x - viewX,
-      y: edge.data.y - viewY,
-    },
-  }));
-}
+  const sizedEdges = useEdges<Size>({
+    source: boardPath,
+    kind: "SIZED",
+  });
 
-// Get the coordinates of the top left and bottom right of the board using the document placements within it
-// TODO: take doc sizes into account for bottom right corner.
-function getBoardCorners(
-  edges: (Omit<EdgeContent, "data"> & { data: Position })[]
-) {
-  return edges.reduce(
+  return placedEdges.reduce(
     (acc, edge) => {
+      const size = sizedEdges.find((sizedEdge) => sizedEdge.dest === edge.dest);
+
       return {
         top: Math.min(edge.data.y, acc.top),
         left: Math.min(edge.data.x, acc.left),
-        bottom: Math.max(edge.data.y, acc.bottom),
-        right: Math.max(edge.data.x, acc.right),
+        bottom: Math.max(edge.data.y + (size?.data.height || 0), acc.bottom),
+        right: Math.max(edge.data.x + (size?.data.width || 0), acc.right),
       };
     },
     { top: 0, left: 0, bottom: 0, right: 0 }
@@ -177,13 +167,12 @@ function Board() {
   const [viewX, setViewX] = React.useState(0);
   const [viewY, setViewY] = React.useState(0);
 
-  const translatedEdges = useTranslatedPlacedEdges(viewX, viewY, BOARD_PATH);
   const edges = useEdges<Position>({
     source: BOARD_PATH,
     kind: "PLACED",
   });
 
-  const boardCorners = getBoardCorners(edges);
+  const boardCorners = useBoardCorners(BOARD_PATH);
 
   const canvasRef = React.useRef<HTMLDivElement>(null);
 
@@ -289,14 +278,16 @@ function Board() {
         <div
           style={{ position: "fixed", top: 0, left: 0 }}
         >{`x: ${viewX} y: ${viewY}`}</div>
-
-        {translatedEdges.map((edge) => (
+        {edges.map((edge) => (
           <div
             key={edge.dest}
             style={{
-              top: edge.data.y,
-              left: edge.data.x,
               position: "fixed",
+              top: 0,
+              left: 0,
+              transform: `translate(${edge.data.x - viewX}px, ${
+                edge.data.y - viewY
+              }px)`,
             }}
           >
             {renderEdge(edge)}
@@ -342,9 +333,6 @@ function TextNode<EdgeData>({
     ) {
       return;
     }
-
-    console.log("writing sized edge...");
-    console.log(debouncedHeight, debouncedWidth);
 
     writeEdge(storage, TEST_AUTHOR, {
       data: { width: debouncedWidth, height: debouncedHeight },
