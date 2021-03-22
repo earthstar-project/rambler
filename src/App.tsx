@@ -8,6 +8,7 @@ import {
 } from "earthstar";
 import {
   EarthstarPeer,
+  useCurrentAuthor,
   useDocument,
   useStorage,
   useSubscribeToStorages,
@@ -45,6 +46,7 @@ function App() {
       initWorkspaces={[WorkspaceStorage]}
       initPubs={{ [WORKSPACE_ADDR]: PUBS }}
       initCurrentWorkspace={WORKSPACE_ADDR}
+      initCurrentAuthor={TEST_AUTHOR}
       initIsLive={false}
     >
       <Board />
@@ -333,13 +335,55 @@ function useTraversalEvents(
   return ref;
 }
 
+function useUnlinkDocFromBoard(docPath: string, boardPath: string) {
+  const storage = useStorage();
+  const [currentAuthor] = useCurrentAuthor();
+
+  return React.useCallback(async () => {
+    if (!storage || !currentAuthor) {
+      return;
+    }
+
+    const placedResult = await findEdgesAsync(storage, {
+      source: boardPath,
+      dest: docPath,
+      kind: "PLACED",
+    });
+
+    const sizedResult = await findEdgesAsync(storage, {
+      source: boardPath,
+      dest: docPath,
+      kind: "PLACED",
+    });
+
+    if (!isErr(placedResult)) {
+      const [placedEdge] = placedResult;
+
+      storage.set(currentAuthor, {
+        content: "",
+        path: placedEdge.path,
+        format: "es.4",
+      });
+    }
+
+    if (!isErr(sizedResult)) {
+      const [sizedEdge] = sizedResult;
+
+      storage.set(currentAuthor, {
+        content: "",
+        path: sizedEdge.path,
+        format: "es.4",
+      });
+    }
+  }, [storage, boardPath, docPath, currentAuthor]);
+}
+
 // board component which manages the virtual canvas space
 function Board() {
   const storage = useStorage(WORKSPACE_ADDR);
 
   const [viewX, setViewX] = React.useState(0);
   const [viewY, setViewY] = React.useState(0);
-  const zoom = React.useState(0);
 
   const edges = useEdges<Position>({
     source: BOARD_PATH,
@@ -398,7 +442,7 @@ function Board() {
           overflow: "auto",
           touchAction: "none",
         }}
-        onClick={async (clickEvent) => {
+        onDoubleClick={async (clickEvent) => {
           if (!storage) {
             return;
           }
@@ -468,6 +512,144 @@ function Board() {
   );
 }
 
+type SelectionState = "blurred" | "focused" | "editing";
+
+function SelectionBox({
+  edge,
+  children,
+}: {
+  edge: EdgeContent;
+  children: React.ReactNode;
+}) {
+  const storage = useStorage();
+  const [currentAuthor] = useCurrentAuthor();
+  const [state, setState] = React.useState<SelectionState>("blurred");
+
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  const [placedEdge] = useEdges<Position>({
+    source: edge.source,
+    dest: edge.dest,
+    kind: "PLACED",
+  });
+
+  const documentOnClick = React.useCallback(
+    (event: Event) => {
+      if (state === "blurred") {
+        return;
+      }
+
+      if ((event.target as Element)?.closest("#test")) {
+        return;
+      }
+
+      setState("blurred");
+    },
+    [state]
+  );
+
+  const [tempTransform, setTempTransform] = React.useState({ x: 0, y: 0 });
+
+  const unlinkDoc = useUnlinkDocFromBoard(edge.dest, edge.source);
+
+  const onKeyDown = React.useCallback(
+    (keyEvent: KeyboardEvent) => {
+      const keys = ["Backspace", "Delete"];
+
+      const { key } = keyEvent;
+      console.log(key);
+
+      if (!keys.includes(key)) {
+        return;
+      }
+
+      keyEvent.preventDefault();
+
+      if (state === "focused") {
+        unlinkDoc();
+      }
+    },
+    [unlinkDoc, state]
+  );
+
+  React.useEffect(() => {
+    document.addEventListener("click", documentOnClick);
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("click", documentOnClick);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [documentOnClick, onKeyDown]);
+
+  useGesture(
+    {
+      onDrag: (dragEvent) => {
+        if (state !== "focused") {
+          return;
+        }
+
+        dragEvent.event.preventDefault();
+        dragEvent.event.stopPropagation();
+
+        const [x, y] = dragEvent.delta;
+
+        requestAnimationFrame(() => {
+          setTempTransform((prev) => ({
+            x: prev.x + x,
+            y: prev.y + y,
+          }));
+        });
+      },
+      onDragEnd: async () => {
+        // TODO: write sized edge, clear temp transform on write
+        if (!storage || !currentAuthor) {
+          return;
+        }
+
+        await writeEdge(storage, currentAuthor, {
+          dest: edge.dest,
+          source: edge.source,
+          kind: "PLACED",
+          owner: "common",
+          data: {
+            x: placedEdge?.data.x + tempTransform.x,
+            y: placedEdge?.data.y + tempTransform.y,
+          },
+        });
+
+        setTempTransform({ x: 0, y: 0 });
+      },
+    },
+    { domTarget: ref }
+  );
+
+  return (
+    <div
+      ref={ref}
+      id={"test"}
+      onClick={(event) => {
+        event.stopPropagation();
+        setState((prev) => (prev === "blurred" ? "focused" : "editing"));
+      }}
+      style={{
+        transform: `translate(${tempTransform.x}px, ${tempTransform.y}px)`,
+        resize: state === "focused" ? "both" : "none",
+        borderWidth: 1,
+        borderStyle: "solid",
+        borderColor:
+          state === "blurred"
+            ? "transparent"
+            : state === "focused"
+            ? "rebeccapurple"
+            : "green",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 // a component for rendering a text node. extremely wip.
 function TextNode<EdgeData>({
   edge,
@@ -523,18 +705,20 @@ function TextNode<EdgeData>({
 
   // TODO: We know how much of the board the user can see, and the sizes and positions of each doc - let's only render what is within the bounds of the viewport!
   return (
-    <div
-      ref={ref}
-      style={{
-        background: "white",
-        resize: "both",
-        overflow: "auto",
-        width: sizedEdge?.data.width || "auto",
-        height: sizedEdge?.data.height || "auto",
-      }}
-    >
-      {textDoc?.content}
-    </div>
+    <SelectionBox edge={edge}>
+      <div
+        ref={ref}
+        style={{
+          background: "white",
+
+          overflow: "auto",
+          width: sizedEdge?.data.width || "auto",
+          height: sizedEdge?.data.height || "auto",
+        }}
+      >
+        {textDoc?.content}
+      </div>
+    </SelectionBox>
   );
 }
 

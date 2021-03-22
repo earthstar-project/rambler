@@ -11,7 +11,11 @@ A hyperlinked spatial document browser and authoring environment.
     - ~~Grows and shrinks as you scroll empty space~~
     - ~~Dimensions ultimately depend on scroll pos + docs~~
     - ~~Sizes linked docs using a `SIZED` edge~~
-- Good UI for resizing
+    - Can zoom in and out
+- Good UI for resizing nodes
+- Touch events
+  - ~~Move canvas on touch~~
+  - Pinch to zoom
 - ~~Renders text docs~~
   - Editable text docs
 - Renders image nodes
