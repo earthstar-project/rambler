@@ -21,6 +21,7 @@ import {
 import useResizeObserver from "use-resize-observer";
 import useDeepCompareEffect from "use-deep-compare-effect";
 import { useDebounce } from "use-debounce";
+import { useGesture } from "react-use-gesture";
 
 import "./App.css";
 
@@ -195,11 +196,11 @@ function nextDeltasWithKeys(
   }, prevDeltas);
 
   if (!set.has("ArrowUp") && !set.has("ArrowDown")) {
-    next.deltaY = next.deltaY / 1.1;
+    next.deltaY = next.deltaY / 1.5;
   }
 
   if (!set.has("ArrowLeft") && !set.has("ArrowRight")) {
-    next.deltaX = next.deltaX / 1.1;
+    next.deltaX = next.deltaX / 1.5;
   }
 
   return next;
@@ -223,24 +224,7 @@ function useTraversalEvents(
 ) {
   const ref = React.useRef<HTMLDivElement>(null);
 
-  const onWheel = React.useCallback(
-    (wheelEvent: WheelEvent) => {
-      const { deltaX, deltaY } = wheelEvent;
-
-      requestAnimationFrame(() => {
-        setX((prev) => prev + deltaX);
-        setY((prev) => prev + deltaY);
-      });
-    },
-    [setX, setY]
-  );
-
   const [keysPressed, setKeysPressed] = React.useState<Set<string>>(new Set());
-  const [isGrabbing, setIsGrabbing] = React.useState(false);
-  const [prevDragPoint, setDragPoint] = React.useState<{
-    x: number;
-    y: number;
-  } | null>(null);
   const [keyDeltaX, setKeyDeltaX] = React.useState(0);
   const [keyDeltaY, setKeyDeltaY] = React.useState(0);
 
@@ -292,82 +276,15 @@ function useTraversalEvents(
     [keysPressed]
   );
 
-  const onMouseMove = React.useCallback(
-    (mouseEvent: MouseEvent) => {
-      if (!isGrabbing) {
-        return;
-      }
-
-      if (!prevDragPoint) {
-        return;
-      }
-
-      requestAnimationFrame(() => {
-        const diffX = mouseEvent.screenX - prevDragPoint.x;
-        const diffY = mouseEvent.screenY - prevDragPoint.y;
-
-        setDragPoint({
-          x: prevDragPoint.x + diffX,
-          y: prevDragPoint.y + diffY,
-        });
-
-        setX((prev) => prev - diffX);
-        setY((prev) => prev - diffY);
-      });
-    },
-    [setX, setY, isGrabbing, prevDragPoint]
-  );
-
-  const onMouseDown = React.useCallback(
-    (clickEvent: MouseEvent) => {
-      if (!keysPressed.has(" ")) {
-        return;
-      }
-
-      setIsGrabbing(true);
-      setDragPoint({ x: clickEvent.screenX, y: clickEvent.screenY });
-    },
-    [keysPressed]
-  );
-
-  const onMouseUp = React.useCallback(() => {
-    setIsGrabbing(false);
-    setDragPoint(null);
-  }, []);
-
   React.useEffect(() => {
-    const el = ref.current;
-
-    el?.addEventListener("wheel", onWheel);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mousedown", onMouseDown);
-    window.addEventListener("mouseup", onMouseUp);
 
     return () => {
-      el?.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mousedown", onMouseDown);
-      window.removeEventListener("mouseup", onMouseUp);
     };
-  }, [onWheel, onKeyDown, onKeyUp, onMouseMove, onMouseDown, onMouseUp]);
-
-  React.useEffect(() => {
-    if (ref.current && keysPressed.has(" ")) {
-      ref.current.style.cursor = "grab";
-    }
-
-    if (ref.current && keysPressed.has(" ") && isGrabbing) {
-      ref.current.style.cursor = "grabbing";
-    }
-
-    if (ref.current && !isGrabbing && !keysPressed.has(" ")) {
-      ref.current.style.cursor = "auto";
-    }
-  }, [keysPressed, isGrabbing]);
+  }, [onKeyDown, onKeyUp]);
 
   React.useEffect(() => {
     const next = nextDeltasWithKeys(
@@ -387,6 +304,32 @@ function useTraversalEvents(
     });
   }, [keysPressed, keyDeltaX, keyDeltaY, setX, setY]);
 
+  useGesture(
+    {
+      onDrag: (drag) => {
+        const [x, y] = drag.delta;
+
+        drag.event.preventDefault();
+
+        requestAnimationFrame(() => {
+          setX((prev) => prev - x);
+          setY((prev) => prev - y);
+        });
+      },
+      onWheel: (wheel) => {
+        const [x, y] = wheel.delta;
+
+        requestAnimationFrame(() => {
+          setX((prev) => prev + x);
+          setY((prev) => prev + y);
+        });
+      },
+    },
+    {
+      domTarget: ref,
+    }
+  );
+
   return ref;
 }
 
@@ -396,6 +339,7 @@ function Board() {
 
   const [viewX, setViewX] = React.useState(0);
   const [viewY, setViewY] = React.useState(0);
+  const zoom = React.useState(0);
 
   const edges = useEdges<Position>({
     source: BOARD_PATH,
@@ -452,6 +396,7 @@ function Board() {
           height: "100vh",
           width: "100vw",
           overflow: "auto",
+          touchAction: "none",
         }}
         onClick={async (clickEvent) => {
           if (!storage) {
