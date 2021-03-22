@@ -23,6 +23,7 @@ import useResizeObserver from "use-resize-observer";
 import useDeepCompareEffect from "use-deep-compare-effect";
 import { useDebounce } from "use-debounce";
 import { useGesture } from "react-use-gesture";
+import { useId } from "@reach/auto-id";
 
 import "./App.css";
 
@@ -533,19 +534,21 @@ function SelectionBox({
     kind: "PLACED",
   });
 
+  const id = useId();
+
   const documentOnClick = React.useCallback(
     (event: Event) => {
       if (state === "blurred") {
         return;
       }
 
-      if ((event.target as Element)?.closest("#test")) {
+      if ((event.target as Element)?.closest(`selection-${id}`)) {
         return;
       }
 
       setState("blurred");
     },
-    [state]
+    [state, id]
   );
 
   const [tempTransform, setTempTransform] = React.useState({ x: 0, y: 0 });
@@ -627,9 +630,9 @@ function SelectionBox({
   return (
     <div
       ref={ref}
-      id={"test"}
+      id={`selection-${id}`}
+      // TODO: How to stop this from triggering at the end of a drag?
       onClick={(event) => {
-        event.stopPropagation();
         setState((prev) => (prev === "blurred" ? "focused" : "editing"));
       }}
       style={{
