@@ -160,6 +160,236 @@ function renderEdge<EdgeData>(edge: Omit<EdgeContent, "data"> & EdgeData) {
   }
 }
 
+function nextDeltasWithKeys(
+  prevDeltas: { deltaX: number; deltaY: number },
+  set: Set<string>
+): { deltaX: number; deltaY: number } {
+  const next = Array.from(set).reduce(({ deltaX, deltaY }, key) => {
+    switch (key) {
+      case "ArrowUp":
+        return {
+          deltaX,
+          deltaY: deltaY - 1,
+        };
+      case "ArrowRight":
+        return {
+          deltaX: deltaX + 1,
+          deltaY,
+        };
+      case "ArrowDown":
+        return {
+          deltaX,
+          deltaY: deltaY + 1,
+        };
+      case "ArrowLeft":
+        return {
+          deltaX: deltaX - 1,
+          deltaY,
+        };
+      default:
+        return {
+          deltaX,
+          deltaY,
+        };
+    }
+  }, prevDeltas);
+
+  if (!set.has("ArrowUp") && !set.has("ArrowDown")) {
+    next.deltaY = next.deltaY / 1.1;
+  }
+
+  if (!set.has("ArrowLeft") && !set.has("ArrowRight")) {
+    next.deltaX = next.deltaX / 1.1;
+  }
+
+  return next;
+}
+
+function clampDelta(delta: number) {
+  if (Math.abs(delta) < 1) {
+    return 0;
+  }
+
+  if (Math.abs(delta) > 24) {
+    return delta < 0 ? -24 : 24;
+  }
+
+  return delta;
+}
+
+function useTraversalEvents(
+  setX: React.Dispatch<React.SetStateAction<number>>,
+  setY: React.Dispatch<React.SetStateAction<number>>
+) {
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  const onWheel = React.useCallback(
+    (wheelEvent: WheelEvent) => {
+      const { deltaX, deltaY } = wheelEvent;
+
+      requestAnimationFrame(() => {
+        setX((prev) => prev + deltaX);
+        setY((prev) => prev + deltaY);
+      });
+    },
+    [setX, setY]
+  );
+
+  const [keysPressed, setKeysPressed] = React.useState<Set<string>>(new Set());
+  const [isGrabbing, setIsGrabbing] = React.useState(false);
+  const [prevDragPoint, setDragPoint] = React.useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [keyDeltaX, setKeyDeltaX] = React.useState(0);
+  const [keyDeltaY, setKeyDeltaY] = React.useState(0);
+
+  const onKeyDown = React.useCallback(
+    (keyEvent: KeyboardEvent) => {
+      const keys = ["ArrowUp", "ArrowRight", "ArrowDown", "ArrowLeft", " "];
+
+      const { key } = keyEvent;
+
+      if (!keys.includes(key)) {
+        return;
+      }
+
+      keyEvent.preventDefault();
+
+      if (keysPressed.has(key)) {
+        return;
+      }
+
+      setKeysPressed((prev) => {
+        return new Set(prev).add(key);
+      });
+    },
+    [keysPressed]
+  );
+
+  const onKeyUp = React.useCallback(
+    (keyEvent: KeyboardEvent) => {
+      const keys = ["ArrowUp", "ArrowRight", "ArrowDown", "ArrowLeft", " "];
+
+      const { key } = keyEvent;
+
+      if (!keys.includes(key)) {
+        return;
+      }
+
+      keyEvent.preventDefault();
+
+      if (!keysPressed.has(key)) {
+        return;
+      }
+
+      setKeysPressed((prev) => {
+        prev.delete(key);
+
+        return new Set(prev);
+      });
+    },
+    [keysPressed]
+  );
+
+  const onMouseMove = React.useCallback(
+    (mouseEvent: MouseEvent) => {
+      if (!isGrabbing) {
+        return;
+      }
+
+      if (!prevDragPoint) {
+        return;
+      }
+
+      requestAnimationFrame(() => {
+        const diffX = mouseEvent.screenX - prevDragPoint.x;
+        const diffY = mouseEvent.screenY - prevDragPoint.y;
+
+        setDragPoint({
+          x: prevDragPoint.x + diffX,
+          y: prevDragPoint.y + diffY,
+        });
+
+        setX((prev) => prev - diffX);
+        setY((prev) => prev - diffY);
+      });
+    },
+    [setX, setY, isGrabbing, prevDragPoint]
+  );
+
+  const onMouseDown = React.useCallback(
+    (clickEvent: MouseEvent) => {
+      if (!keysPressed.has(" ")) {
+        return;
+      }
+
+      setIsGrabbing(true);
+      setDragPoint({ x: clickEvent.screenX, y: clickEvent.screenY });
+    },
+    [keysPressed]
+  );
+
+  const onMouseUp = React.useCallback(() => {
+    setIsGrabbing(false);
+    setDragPoint(null);
+  }, []);
+
+  React.useEffect(() => {
+    const el = ref.current;
+
+    el?.addEventListener("wheel", onWheel);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mouseup", onMouseUp);
+
+    return () => {
+      el?.removeEventListener("wheel", onWheel);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [onWheel, onKeyDown, onKeyUp, onMouseMove, onMouseDown, onMouseUp]);
+
+  React.useEffect(() => {
+    if (ref.current && keysPressed.has(" ")) {
+      ref.current.style.cursor = "grab";
+    }
+
+    if (ref.current && keysPressed.has(" ") && isGrabbing) {
+      ref.current.style.cursor = "grabbing";
+    }
+
+    if (ref.current && !isGrabbing && !keysPressed.has(" ")) {
+      ref.current.style.cursor = "auto";
+    }
+  }, [keysPressed, isGrabbing]);
+
+  React.useEffect(() => {
+    const next = nextDeltasWithKeys(
+      { deltaX: keyDeltaX, deltaY: keyDeltaY },
+      keysPressed
+    );
+
+    const finalX = clampDelta(next.deltaX);
+    const finalY = clampDelta(next.deltaY);
+
+    requestAnimationFrame(() => {
+      setX((prev) => Math.round(prev + keyDeltaX));
+      setY((prev) => Math.round(prev + keyDeltaY));
+
+      setKeyDeltaX(finalX);
+      setKeyDeltaY(finalY);
+    });
+  }, [keysPressed, keyDeltaX, keyDeltaY, setX, setY]);
+
+  return ref;
+}
+
 // board component which manages the virtual canvas space
 function Board() {
   const storage = useStorage(WORKSPACE_ADDR);
@@ -174,7 +404,9 @@ function Board() {
 
   const boardCorners = useBoardCorners(BOARD_PATH);
 
-  const canvasRef = React.useRef<HTMLDivElement>(null);
+  //const canvasRef = React.useRef<HTMLDivElement>(null);
+
+  const canvasRef = useTraversalEvents(setViewX, setViewY);
 
   // the size of the board as determined by its placed contents
   const intrinsicWidth = boardCorners.right - boardCorners.left;
@@ -207,7 +439,7 @@ function Board() {
       canvasRef.current.scrollTop = Math.abs(boardCorners.top);
       canvasRef.current.scrollLeft = Math.abs(boardCorners.left);
     }
-  }, [boardCorners.top, boardCorners.left, viewX, viewY]);
+  }, [boardCorners.top, boardCorners.left, viewX, viewY, canvasRef]);
 
   return (
     <div>
@@ -220,12 +452,6 @@ function Board() {
           height: "100vh",
           width: "100vw",
           overflow: "auto",
-        }}
-        onWheel={(wheelEvent) => {
-          const { deltaX, deltaY } = wheelEvent;
-
-          setViewY((prev) => prev + deltaY);
-          setViewX((prev) => prev + deltaX);
         }}
         onClick={async (clickEvent) => {
           if (!storage) {
@@ -246,8 +472,7 @@ function Board() {
           const docPath = `${TRIPLEX_DIR}/${Date.now()}.txt`;
 
           const writeResult = await storage?.set(TEST_AUTHOR, {
-            content:
-              "It'd be nice to see what one of these things looks like when it has longer text. Is a paragraph really so much to ask for?",
+            content: "Hello!",
             format: "es.4",
             path: docPath,
           });
