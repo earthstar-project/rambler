@@ -493,6 +493,9 @@ function Board() {
         <div
           style={{ position: "fixed", top: 0, left: 0 }}
         >{`x: ${viewX} y: ${viewY}`}</div>
+        // TODO: We know how much of the board the user can see, and the sizes
+        and positions of each doc - let's only render what is within the bounds
+        of the viewport!
         {edges.map((edge) => (
           <div
             key={edge.dest}
@@ -514,6 +517,65 @@ function Board() {
 }
 
 type SelectionState = "blurred" | "focused" | "editing";
+type DragOperation =
+  | "none"
+  | "n-resize"
+  | "ne-resize"
+  | "e-resize"
+  | "se-resize"
+  | "s-resize"
+  | "sw-resize"
+  | "w-resize"
+  | "nw-resize"
+  | "move";
+
+function dragOperationFromRelativePositions(positions: {
+  top: number;
+  left: number;
+  right: number;
+  bottom: number;
+}): DragOperation {
+  const matches = {
+    top: Math.abs(positions.top) < 5,
+    left: Math.abs(positions.left) < 5,
+    bottom: Math.abs(positions.bottom) < 5,
+    right: Math.abs(positions.right) < 5,
+  };
+
+  if (matches.top && matches.left) {
+    return "nw-resize";
+  }
+
+  if (matches.top && matches.right) {
+    return "ne-resize";
+  }
+
+  if (matches.bottom && matches.left) {
+    return "sw-resize";
+  }
+
+  if (matches.bottom && matches.right) {
+    return "se-resize";
+  }
+
+  if (matches.top) {
+    return "n-resize";
+  }
+
+  if (matches.right) {
+    return "e-resize";
+  }
+
+  if (matches.bottom) {
+    return "s-resize";
+  }
+
+  if (matches.left) {
+    return "w-resize";
+  }
+
+  return "move";
+}
 
 function SelectionBox({
   edge,
@@ -525,6 +587,9 @@ function SelectionBox({
   const storage = useStorage();
   const [currentAuthor] = useCurrentAuthor();
   const [state, setState] = React.useState<SelectionState>("blurred");
+  const [dragOperation, setDragOperation] = React.useState<DragOperation>(
+    "none"
+  );
 
   const ref = React.useRef<HTMLDivElement>(null);
 
@@ -586,40 +651,64 @@ function SelectionBox({
 
   useGesture(
     {
-      onDrag: (dragEvent) => {
+      onDragStart: (dragEvent) => {
         if (state === "blurred") {
           setState("focused");
         }
 
+        const [initialX, initialY] = dragEvent.initial;
+        const { top, bottom, left, right } = (dragEvent.event
+          .target as Element).getBoundingClientRect();
+
+        const relativePositions = {
+          top: top - initialY,
+          bottom: bottom - initialY,
+          left: left - initialX,
+          right: right - initialX,
+        };
+
+        setDragOperation(() =>
+          dragOperationFromRelativePositions(relativePositions)
+        );
+      },
+      onDrag: (dragEvent) => {
         dragEvent.event.preventDefault();
         dragEvent.event.stopPropagation();
 
         const [x, y] = dragEvent.delta;
 
-        requestAnimationFrame(() => {
-          setTempTransform((prev) => ({
-            x: prev.x + x,
-            y: prev.y + y,
-          }));
-        });
+        // NEXT: implement resize operations
+
+        if (dragOperation === "move") {
+          requestAnimationFrame(() => {
+            setTempTransform((prev) => ({
+              x: prev.x + x,
+              y: prev.y + y,
+            }));
+          });
+        }
       },
       onDragEnd: async () => {
         if (!storage || !currentAuthor) {
           return;
         }
 
-        await writeEdge(storage, currentAuthor, {
-          dest: edge.dest,
-          source: edge.source,
-          kind: "PLACED",
-          owner: "common",
-          data: {
-            x: placedEdge?.data.x + tempTransform.x,
-            y: placedEdge?.data.y + tempTransform.y,
-          },
-        });
+        if (dragOperation === "move") {
+          await writeEdge(storage, currentAuthor, {
+            dest: edge.dest,
+            source: edge.source,
+            kind: "PLACED",
+            owner: "common",
+            data: {
+              x: placedEdge?.data.x + tempTransform.x,
+              y: placedEdge?.data.y + tempTransform.y,
+            },
+          });
 
-        setTempTransform({ x: 0, y: 0 });
+          setTempTransform({ x: 0, y: 0 });
+        }
+
+        setDragOperation("none");
       },
     },
     { domTarget: ref }
@@ -704,7 +793,6 @@ function TextNode<EdgeData>({
     sizedEdge?.data.width,
   ]);
 
-  // TODO: We know how much of the board the user can see, and the sizes and positions of each doc - let's only render what is within the bounds of the viewport!
   return (
     <SelectionBox edge={edge}>
       <div
@@ -712,6 +800,7 @@ function TextNode<EdgeData>({
         style={{
           background: "white",
           overflow: "auto",
+          padding: 10,
           width: sizedEdge?.data.width || "auto",
           height: sizedEdge?.data.height || "auto",
         }}
