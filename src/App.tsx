@@ -542,7 +542,7 @@ function SelectionBox({
         return;
       }
 
-      if ((event.target as Element)?.closest(`selection-${id}`)) {
+      if ((event.target as Element)?.closest(`#selection-${id}`)) {
         return;
       }
 
@@ -560,7 +560,6 @@ function SelectionBox({
       const keys = ["Backspace", "Delete"];
 
       const { key } = keyEvent;
-      console.log(key);
 
       if (!keys.includes(key)) {
         return;
@@ -588,8 +587,8 @@ function SelectionBox({
   useGesture(
     {
       onDrag: (dragEvent) => {
-        if (state !== "focused") {
-          return;
+        if (state === "blurred") {
+          setState("focused");
         }
 
         dragEvent.event.preventDefault();
@@ -605,7 +604,6 @@ function SelectionBox({
         });
       },
       onDragEnd: async () => {
-        // TODO: write sized edge, clear temp transform on write
         if (!storage || !currentAuthor) {
           return;
         }
@@ -630,11 +628,11 @@ function SelectionBox({
   return (
     <div
       ref={ref}
-      id={`selection-${id}`}
-      // TODO: How to stop this from triggering at the end of a drag?
-      onClick={(event) => {
-        setState((prev) => (prev === "blurred" ? "focused" : "editing"));
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        setState((prev) => (prev === "focused" ? "editing" : prev));
       }}
+      id={`selection-${id}`}
       style={{
         transform: `translate(${tempTransform.x}px, ${tempTransform.y}px)`,
         resize: state === "focused" ? "both" : "none",
@@ -713,7 +711,6 @@ function TextNode<EdgeData>({
         ref={ref}
         style={{
           background: "white",
-
           overflow: "auto",
           width: sizedEdge?.data.width || "auto",
           height: sizedEdge?.data.height || "auto",
