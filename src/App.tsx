@@ -462,7 +462,7 @@ function Board() {
           const docPath = `${TRIPLEX_DIR}/${Date.now()}.txt`;
 
           const writeResult = await storage?.set(TEST_AUTHOR, {
-            content: "Hello!",
+            content: "Hello there!",
             format: "es.4",
             path: docPath,
           });
@@ -493,9 +493,10 @@ function Board() {
         <div
           style={{ position: "fixed", top: 0, left: 0 }}
         >{`x: ${viewX} y: ${viewY}`}</div>
-        // TODO: We know how much of the board the user can see, and the sizes
+        {/* TODO: We know how much of the board the user can see, and the sizes
         and positions of each doc - let's only render what is within the bounds
-        of the viewport!
+        of the viewport! */}
+        {/* TODO: transform all of the nodes at once, rather than individually*/}
         {edges.map((edge) => (
           <div
             key={edge.dest}
@@ -577,6 +578,97 @@ function dragOperationFromRelativePositions(positions: {
   return "move";
 }
 
+function resize(
+  kind: Exclude<DragOperation, "move" | "none">,
+  originalSize: { width: number; height: number },
+  resizeDelta: { x: number; y: number }
+): {
+  relativeX: number;
+  relativeY: number;
+  width: number;
+  height: number;
+} {
+  // TODO: clamp operations so that height and width cannot go below 10
+  if (kind === "n-resize") {
+    return {
+      relativeX: 0,
+      relativeY: resizeDelta.y,
+      width: originalSize.width,
+      height: originalSize.height - resizeDelta.y,
+    };
+  }
+
+  if (kind === "ne-resize") {
+    return {
+      relativeX: 0,
+      relativeY: resizeDelta.y,
+      width: originalSize.width + resizeDelta.x,
+      height: originalSize.height - resizeDelta.y,
+    };
+  }
+
+  if (kind === "e-resize") {
+    return {
+      relativeX: 0,
+      relativeY: 0,
+      width: originalSize.width + resizeDelta.x,
+      height: originalSize.height,
+    };
+  }
+
+  if (kind === "se-resize") {
+    return {
+      relativeX: 0,
+      relativeY: 0,
+      width: originalSize.width + resizeDelta.x,
+      height: originalSize.height + resizeDelta.y,
+    };
+  }
+
+  if (kind === "s-resize") {
+    return {
+      relativeX: 0,
+      relativeY: 0,
+      width: originalSize.width,
+      height: originalSize.height + resizeDelta.y,
+    };
+  }
+
+  if (kind === "sw-resize") {
+    return {
+      relativeX: 0 + resizeDelta.x,
+      relativeY: 0,
+      width: originalSize.width - resizeDelta.x,
+      height: originalSize.height + resizeDelta.y,
+    };
+  }
+
+  if (kind === "w-resize") {
+    return {
+      relativeX: 0 + resizeDelta.x,
+      relativeY: 0,
+      width: originalSize.width - resizeDelta.x,
+      height: originalSize.height,
+    };
+  }
+
+  if (kind === "nw-resize") {
+    return {
+      relativeX: 0 + resizeDelta.x,
+      relativeY: 0 + resizeDelta.y,
+      width: originalSize.width - resizeDelta.x,
+      height: originalSize.height - resizeDelta.y,
+    };
+  }
+
+  return {
+    relativeX: 0,
+    relativeY: 0,
+    width: originalSize.width,
+    height: originalSize.height,
+  };
+}
+
 function SelectionBox({
   edge,
   children,
@@ -590,13 +682,17 @@ function SelectionBox({
   const [dragOperation, setDragOperation] = React.useState<DragOperation>(
     "none"
   );
-
   const ref = React.useRef<HTMLDivElement>(null);
 
   const [placedEdge] = useEdges<Position>({
     source: edge.source,
     dest: edge.dest,
     kind: "PLACED",
+  });
+  const [sizedEdge] = useEdges<Size>({
+    source: edge.source,
+    dest: edge.dest,
+    kind: "SIZED",
   });
 
   const id = useId();
@@ -617,6 +713,11 @@ function SelectionBox({
   );
 
   const [tempTransform, setTempTransform] = React.useState({ x: 0, y: 0 });
+  const [tempResize, setTempResize] = React.useState<null | Size>(null);
+  const [tempSizeReference, setTempSizeReference] = React.useState({
+    width: 0,
+    height: 0,
+  });
 
   const unlinkDoc = useUnlinkDocFromBoard(edge.dest, edge.source);
 
@@ -649,9 +750,16 @@ function SelectionBox({
     };
   }, [documentOnClick, onKeyDown]);
 
+  // TODO: put the right cursor on the bounding box when hovering!
+
   useGesture(
     {
       onDragStart: (dragEvent) => {
+        if (state === "editing") {
+          setDragOperation("none");
+          return;
+        }
+
         if (state === "blurred") {
           setState("focused");
         }
@@ -667,9 +775,20 @@ function SelectionBox({
           right: right - initialX,
         };
 
-        setDragOperation(() =>
-          dragOperationFromRelativePositions(relativePositions)
+        const nextDragOperation = dragOperationFromRelativePositions(
+          relativePositions
         );
+
+        if (
+          nextDragOperation !== "move" &&
+          nextDragOperation !== "none" &&
+          ref.current
+        ) {
+          const { width, height } = ref.current.getBoundingClientRect();
+          setTempSizeReference({ width, height });
+        }
+
+        setDragOperation(() => nextDragOperation);
       },
       onDrag: (dragEvent) => {
         dragEvent.event.preventDefault();
@@ -677,7 +796,23 @@ function SelectionBox({
 
         const [x, y] = dragEvent.delta;
 
-        // NEXT: implement resize operations
+        if (dragOperation !== "move" && dragOperation !== "none") {
+          const [x, y] = dragEvent.movement;
+
+          const { height, width, relativeX, relativeY } = resize(
+            dragOperation,
+            tempSizeReference,
+            { x, y }
+          );
+
+          requestAnimationFrame(() => {
+            setTempTransform({
+              x: relativeX,
+              y: relativeY,
+            });
+            setTempResize({ height, width });
+          });
+        }
 
         if (dragOperation === "move") {
           requestAnimationFrame(() => {
@@ -704,15 +839,46 @@ function SelectionBox({
               y: placedEdge?.data.y + tempTransform.y,
             },
           });
-
-          setTempTransform({ x: 0, y: 0 });
         }
+
+        // TODO: isDragOperation helper
+        if (dragOperation !== "move" && dragOperation !== "none") {
+          console.log(placedEdge.data);
+          console.log(tempTransform);
+
+          await writeEdge(storage, currentAuthor, {
+            dest: edge.dest,
+            source: edge.source,
+            kind: "PLACED",
+            owner: "common",
+            data: {
+              x: placedEdge?.data.x + tempTransform.x,
+              y: placedEdge?.data.y + tempTransform.y,
+            },
+          });
+          await writeEdge(storage, currentAuthor, {
+            dest: edge.dest,
+            source: edge.source,
+            kind: "SIZED",
+            owner: "common",
+            data: tempResize,
+          });
+        }
+
+        requestAnimationFrame(() => {
+          setTempSizeReference({ width: 0, height: 0 });
+          setTempTransform({ x: 0, y: 0 });
+          setTempResize(null);
+        });
 
         setDragOperation("none");
       },
     },
     { domTarget: ref }
   );
+
+  // NEXT: positions aren't being set correctly!
+  console.log(tempTransform);
 
   return (
     <div
@@ -723,8 +889,12 @@ function SelectionBox({
       }}
       id={`selection-${id}`}
       style={{
+        overflow: "auto",
+        width: tempResize ? tempResize.width : sizedEdge?.data.width || "auto",
+        height: tempResize
+          ? tempResize.height
+          : sizedEdge?.data.height || "auto",
         transform: `translate(${tempTransform.x}px, ${tempTransform.y}px)`,
-        resize: state === "focused" ? "both" : "none",
         borderWidth: 1,
         borderStyle: "solid",
         borderColor:
@@ -746,63 +916,15 @@ function TextNode<EdgeData>({
 }: {
   edge: Omit<EdgeContent, "data"> & EdgeData;
 }) {
-  const storage = useStorage();
   const [textDoc] = useDocument(edge.dest);
-  const { ref, height, width } = useResizeObserver();
-
-  // TODO: pull out all this sizing behaviour into a hook/component that can be used on many components
-  const [sizedEdge] = useEdges<Size>({
-    source: edge.source,
-    dest: edge.dest,
-    kind: "SIZED",
-  });
-
-  const [debouncedHeight] = useDebounce(height, 1000);
-  const [debouncedWidth] = useDebounce(width, 1000);
-
-  React.useEffect(() => {
-    if (!storage) {
-      return;
-    }
-
-    if (!debouncedHeight || !debouncedWidth) {
-      return;
-    }
-
-    if (
-      debouncedHeight === sizedEdge?.data.height &&
-      debouncedWidth === sizedEdge?.data.width
-    ) {
-      return;
-    }
-
-    writeEdge(storage, TEST_AUTHOR, {
-      data: { width: debouncedWidth, height: debouncedHeight },
-      dest: edge.dest,
-      source: edge.source,
-      kind: "SIZED",
-      owner: "common",
-    });
-  }, [
-    debouncedHeight,
-    debouncedWidth,
-    edge.dest,
-    edge.source,
-    storage,
-    sizedEdge?.data.height,
-    sizedEdge?.data.width,
-  ]);
 
   return (
     <SelectionBox edge={edge}>
       <div
-        ref={ref}
         style={{
           background: "white",
-          overflow: "auto",
           padding: 10,
-          width: sizedEdge?.data.width || "auto",
-          height: sizedEdge?.data.height || "auto",
+          height: "calc(100% - 20px)",
         }}
       >
         {textDoc?.content}
