@@ -1081,10 +1081,11 @@ function TextNode<EdgeData>({
   return (
     <textarea
       style={{
-        background: "white",
-        padding: 10,
-        width: "calc(100% - 20px)",
-        height: "calc(100% - 20px)",
+        background: "transparent",
+        padding: 0,
+        margin: 0,
+        width: "100%",
+        height: "100%",
         border: "none",
         resize: "none",
         fontSize: "1em",
