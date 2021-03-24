@@ -7,6 +7,7 @@ import {
   Document,
 } from "earthstar";
 import {
+  AuthorLabel,
   EarthstarPeer,
   useCurrentAuthor,
   useDocument,
@@ -25,6 +26,7 @@ import { useGesture } from "react-use-gesture";
 import { useId } from "@reach/auto-id";
 
 import "./App.css";
+import { formatDistance } from "date-fns";
 
 // Hardcoding values for things now
 const WORKSPACE_ADDR = "+triplextest.a6udu8ab";
@@ -470,7 +472,7 @@ function Board() {
           const translatedX = x + viewX;
           const translatedY = y + viewY;
 
-          const docPath = `${TRIPLEX_DIR}/${Date.now()}.txt`;
+          const docPath = `/notes/${Date.now()}.txt`;
 
           const writeResult = await storage?.set(TEST_AUTHOR, {
             content: "Hello there!",
@@ -794,6 +796,8 @@ function SelectionBox({
     };
   }, [documentOnClick, onKeyDown]);
 
+  const [destDoc] = useDocument(edge.dest);
+
   useGesture(
     {
       onDragStart: (dragEvent) => {
@@ -955,42 +959,93 @@ function SelectionBox({
     { domTarget: ref }
   );
 
+  const destDocDate = new Date(destDoc ? destDoc.timestamp / 1000 : Date.now());
+
   return (
     <div
-      ref={ref}
-      onDoubleClick={(event) => {
-        event.stopPropagation();
-        setState((prev) => (prev === "focused" ? "editing" : prev));
-      }}
-      id={`selection-${id}`}
       style={{
-        cursor:
-          dragOperation !== "none"
-            ? getCursorFromDragOperation(dragOperation, true)
-            : getCursorFromDragOperation(predictedDragOperation, false),
-        overflow: "auto",
-        width: tempResize ? tempResize.width : sizedEdge?.data?.width || "auto",
-        height: tempResize
-          ? tempResize.height
-          : sizedEdge?.data?.height || "auto",
+        position: "relative",
         transform: `translate(${tempTransform.x}px, ${tempTransform.y}px)`,
-        borderWidth: 1,
-        borderStyle: state === "hovered" ? "dashed" : "solid",
-        borderColor:
-          state === "hovered"
-            ? "rebeccapurple"
-            : state === "blurred"
-            ? "transparent"
-            : state === "focused"
-            ? "rebeccapurple"
-            : "green",
       }}
     >
-      <SelectionContext.Provider value={{ editing: state === "editing" }}>
-        <div style={{ pointerEvents: state === "editing" ? "auto" : "none" }}>
-          {children}
+      {state !== "blurred" ? (
+        <div
+          style={{
+            position: "absolute",
+            color: "rebeccapurple",
+            left: 0,
+            top: -12,
+            right: 0,
+            fontSize: 10,
+
+            whiteSpace: "nowrap",
+          }}
+        >
+          <div style={{ marginRight: "1ch" }}>{edge.dest}</div>
         </div>
-      </SelectionContext.Provider>
+      ) : null}
+      <div
+        ref={ref}
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          setState((prev) => (prev === "focused" ? "editing" : prev));
+        }}
+        id={`selection-${id}`}
+        style={{
+          cursor:
+            dragOperation !== "none"
+              ? getCursorFromDragOperation(dragOperation, true)
+              : getCursorFromDragOperation(predictedDragOperation, false),
+          overflow: "auto",
+          width: tempResize
+            ? tempResize.width
+            : sizedEdge?.data?.width || "auto",
+          height: tempResize
+            ? tempResize.height
+            : sizedEdge?.data?.height || "auto",
+
+          borderWidth: 1,
+          borderStyle: state === "hovered" ? "dashed" : "solid",
+          borderColor:
+            state === "hovered"
+              ? "rebeccapurple"
+              : state === "blurred"
+              ? "transparent"
+              : state === "focused"
+              ? "rebeccapurple"
+              : "green",
+        }}
+      >
+        <SelectionContext.Provider value={{ editing: state === "editing" }}>
+          <div style={{ pointerEvents: state === "editing" ? "auto" : "none" }}>
+            {children}
+          </div>
+        </SelectionContext.Provider>
+      </div>
+      {state !== "blurred" ? (
+        <div
+          style={{
+            position: "absolute",
+            color: "rebeccapurple",
+            left: 0,
+            bottom: -12,
+            right: 0,
+            fontSize: 10,
+            display: "flex",
+            justifyContent: "flex-end",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <span>
+            <b>
+              <AuthorLabel address={destDoc?.author || ""} />
+            </b>{" "}
+            {formatDistance(destDocDate, new Date(), {
+              addSuffix: true,
+            })}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1007,7 +1062,7 @@ function TextNode<EdgeData>({
   const [debouncedTextValue] = useDebounce(textValue, 1000);
 
   React.useEffect(() => {
-    if (textDoc?.content) {
+    if (textDoc?.content && textDoc.content !== textValue) {
       setTextValue(textDoc.content);
     }
   }, [textDoc?.content]);
