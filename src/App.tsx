@@ -1017,7 +1017,12 @@ function SelectionBox({
         }}
       >
         <SelectionContext.Provider value={{ editing: state === "editing" }}>
-          <div style={{ pointerEvents: state === "editing" ? "auto" : "none" }}>
+          <div
+            style={{
+              pointerEvents: state === "editing" ? "auto" : "none",
+              height: "100%",
+            }}
+          >
             {children}
           </div>
         </SelectionContext.Provider>
@@ -1062,14 +1067,16 @@ function TextNode<EdgeData>({
   const [debouncedTextValue] = useDebounce(textValue, 1000);
 
   React.useEffect(() => {
-    if (textDoc?.content && textDoc.content !== textValue) {
+    if (textDoc?.content) {
       setTextValue(textDoc.content);
     }
-  }, [textDoc?.content]);
+  }, [textDoc?.content, debouncedTextValue]);
 
   React.useEffect(() => {
-    setTextDoc(debouncedTextValue);
-  }, [setTextDoc, debouncedTextValue]);
+    if (debouncedTextValue !== textDoc?.content) {
+      setTextDoc(debouncedTextValue);
+    }
+  }, [setTextDoc, debouncedTextValue, textDoc?.content]);
 
   return (
     <textarea
