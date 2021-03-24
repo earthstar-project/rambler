@@ -19,9 +19,8 @@ import {
   GraphQuery,
   writeEdge,
 } from "earthstar-graph-db";
-import useResizeObserver from "use-resize-observer";
-import useDeepCompareEffect from "use-deep-compare-effect";
 import { useDebounce } from "use-debounce";
+import useDeepCompareEffect from "use-deep-compare-effect";
 import { useGesture } from "react-use-gesture";
 import { useId } from "@reach/auto-id";
 
@@ -129,8 +128,8 @@ function useBoardCorners(boardPath: string) {
       return {
         top: Math.min(edge.data.y, acc.top),
         left: Math.min(edge.data.x, acc.left),
-        bottom: Math.max(edge.data.y + (size?.data.height || 0), acc.bottom),
-        right: Math.max(edge.data.x + (size?.data.width || 0), acc.right),
+        bottom: Math.max(edge.data.y + (size?.data?.height || 0), acc.bottom),
+        right: Math.max(edge.data.x + (size?.data?.width || 0), acc.right),
       };
     },
     { top: 0, left: 0, bottom: 0, right: 0 }
@@ -156,7 +155,11 @@ function getEdgeRenderType<EdgeData>(
 function renderEdge<EdgeData>(edge: Omit<EdgeContent, "data"> & EdgeData) {
   switch (getEdgeRenderType(edge)) {
     case "text":
-      return <TextNode edge={edge} />;
+      return (
+        <SelectionBox edge={edge}>
+          <TextNode edge={edge} />
+        </SelectionBox>
+      );
     default:
       return (
         <div style={{ border: "2px solid black", borderRadius: "50%" }}></div>
@@ -241,11 +244,15 @@ function useTraversalEvents(
         return;
       }
 
-      keyEvent.preventDefault();
-
       if (keysPressed.has(key)) {
         return;
       }
+
+      if (keyEvent.target !== document.body) {
+        return;
+      }
+
+      keyEvent.preventDefault();
 
       setKeysPressed((prev) => {
         return new Set(prev).add(key);
@@ -280,12 +287,16 @@ function useTraversalEvents(
   );
 
   React.useEffect(() => {
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
+    const target = document;
+
+    if (target) {
+      target.addEventListener("keydown", onKeyDown, false);
+      target.addEventListener("keyup", onKeyUp, false);
+    }
 
     return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
+      target?.removeEventListener("keydown", onKeyDown);
+      target?.removeEventListener("keyup", onKeyUp);
     };
   }, [onKeyDown, onKeyUp]);
 
@@ -517,7 +528,7 @@ function Board() {
   );
 }
 
-type SelectionState = "blurred" | "focused" | "editing";
+type SelectionState = "hovered" | "blurred" | "focused" | "editing";
 type DragOperation =
   | "none"
   | "n-resize"
@@ -669,6 +680,35 @@ function resize(
   };
 }
 
+function getCursorFromDragOperation(
+  operation: DragOperation,
+  active: boolean
+): string {
+  switch (operation) {
+    case "move":
+      return active ? "grabbing" : "auto";
+    case "n-resize":
+    case "s-resize":
+      return "ns-resize";
+    case "w-resize":
+    case "e-resize":
+      return "ew-resize";
+    case "nw-resize":
+    case "se-resize":
+      return "nwse-resize";
+    case "ne-resize":
+    case "sw-resize":
+      return "nesw-resize";
+
+    default:
+      return "auto";
+  }
+}
+
+const SelectionContext = React.createContext({
+  editing: false,
+});
+
 function SelectionBox({
   edge,
   children,
@@ -719,6 +759,11 @@ function SelectionBox({
     height: 0,
   });
 
+  const [
+    predictedDragOperation,
+    setPredictedDragOperation,
+  ] = React.useState<DragOperation>("none");
+
   const unlinkDoc = useUnlinkDocFromBoard(edge.dest, edge.source);
 
   const onKeyDown = React.useCallback(
@@ -731,9 +776,8 @@ function SelectionBox({
         return;
       }
 
-      keyEvent.preventDefault();
-
       if (state === "focused") {
+        keyEvent.preventDefault();
         unlinkDoc();
       }
     },
@@ -760,7 +804,7 @@ function SelectionBox({
           return;
         }
 
-        if (state === "blurred") {
+        if (state === "blurred" || state === "hovered") {
           setState("focused");
         }
 
@@ -789,6 +833,45 @@ function SelectionBox({
         }
 
         setDragOperation(() => nextDragOperation);
+      },
+      onMove: (moveEvent) => {
+        if (state !== "focused" && dragOperation === "none") {
+          return;
+        }
+
+        const [x, y] = moveEvent.xy;
+        const { top, bottom, left, right } = (moveEvent.event
+          .target as Element).getBoundingClientRect();
+
+        const relativePositions = {
+          top: top - y,
+          bottom: bottom - y,
+          left: left - x,
+          right: right - x,
+        };
+
+        const nextDragOperation = dragOperationFromRelativePositions(
+          relativePositions
+        );
+
+        setPredictedDragOperation(nextDragOperation);
+      },
+      onHover: (hoverEvent) => {
+        if (hoverEvent.hovering === false) {
+          setPredictedDragOperation("none");
+        }
+
+        setState((prev) => {
+          if (!hoverEvent.hovering && prev === "hovered") {
+            setState("blurred");
+          }
+
+          if (hoverEvent.hovering && prev === "blurred") {
+            setState("hovered");
+          }
+
+          return prev;
+        });
       },
       onDrag: (dragEvent) => {
         dragEvent.event.preventDefault();
@@ -843,9 +926,6 @@ function SelectionBox({
 
         // TODO: isDragOperation helper
         if (dragOperation !== "move" && dragOperation !== "none") {
-          console.log(placedEdge.data);
-          console.log(tempTransform);
-
           await writeEdge(storage, currentAuthor, {
             dest: edge.dest,
             source: edge.source,
@@ -877,9 +957,6 @@ function SelectionBox({
     { domTarget: ref }
   );
 
-  // NEXT: positions aren't being set correctly!
-  console.log(tempTransform);
-
   return (
     <div
       ref={ref}
@@ -889,47 +966,77 @@ function SelectionBox({
       }}
       id={`selection-${id}`}
       style={{
+        cursor:
+          dragOperation !== "none"
+            ? getCursorFromDragOperation(dragOperation, true)
+            : getCursorFromDragOperation(predictedDragOperation, false),
         overflow: "auto",
-        width: tempResize ? tempResize.width : sizedEdge?.data.width || "auto",
+        width: tempResize ? tempResize.width : sizedEdge?.data?.width || "auto",
         height: tempResize
           ? tempResize.height
-          : sizedEdge?.data.height || "auto",
+          : sizedEdge?.data?.height || "auto",
         transform: `translate(${tempTransform.x}px, ${tempTransform.y}px)`,
         borderWidth: 1,
-        borderStyle: "solid",
+        borderStyle: state === "hovered" ? "dashed" : "solid",
         borderColor:
-          state === "blurred"
+          state === "hovered"
+            ? "rebeccapurple"
+            : state === "blurred"
             ? "transparent"
             : state === "focused"
             ? "rebeccapurple"
             : "green",
       }}
     >
-      {children}
+      <SelectionContext.Provider value={{ editing: state === "editing" }}>
+        {children}
+      </SelectionContext.Provider>
     </div>
   );
 }
 
-// a component for rendering a text node. extremely wip.
 function TextNode<EdgeData>({
   edge,
 }: {
   edge: Omit<EdgeContent, "data"> & EdgeData;
 }) {
-  const [textDoc] = useDocument(edge.dest);
+  const [textDoc, setTextDoc] = useDocument(edge.dest);
+  const { editing } = React.useContext(SelectionContext);
+  const [textValue, setTextValue] = React.useState(textDoc?.content || "");
+
+  const [debouncedTextValue] = useDebounce(textValue, 1000);
+
+  React.useEffect(() => {
+    if (textDoc?.content) {
+      setTextValue(textDoc.content);
+    }
+  }, [textDoc?.content]);
+
+  React.useEffect(() => {
+    setTextDoc(debouncedTextValue);
+  }, [setTextDoc, debouncedTextValue]);
 
   return (
-    <SelectionBox edge={edge}>
-      <div
-        style={{
-          background: "white",
-          padding: 10,
-          height: "calc(100% - 20px)",
-        }}
-      >
-        {textDoc?.content}
-      </div>
-    </SelectionBox>
+    <textarea
+      style={{
+        background: "white",
+        padding: 10,
+        width: "calc(100% - 20px)",
+        height: "calc(100% - 20px)",
+        border: "none",
+        resize: "none",
+        fontSize: "1em",
+      }}
+      readOnly={!editing}
+      value={textValue}
+      onChange={(e) => {
+        if (!editing) {
+          return;
+        }
+
+        setTextValue(e.target.value);
+      }}
+    />
   );
 }
 
