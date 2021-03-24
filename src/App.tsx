@@ -794,8 +794,6 @@ function SelectionBox({
     };
   }, [documentOnClick, onKeyDown]);
 
-  // TODO: put the right cursor on the bounding box when hovering!
-
   useGesture(
     {
       onDragStart: (dragEvent) => {
@@ -989,7 +987,9 @@ function SelectionBox({
       }}
     >
       <SelectionContext.Provider value={{ editing: state === "editing" }}>
-        {children}
+        <div style={{ pointerEvents: state === "editing" ? "auto" : "none" }}>
+          {children}
+        </div>
       </SelectionContext.Provider>
     </div>
   );
