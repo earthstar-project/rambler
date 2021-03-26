@@ -339,6 +339,14 @@ export function Board() {
             dest: docPath,
             kind: "PLACED",
           });
+
+          writeEdge(storage, TEST_AUTHOR, {
+            owner: "common",
+            data: { width: 100, height: 100 },
+            source: BOARD_PATH,
+            dest: docPath,
+            kind: "SIZED",
+          });
         }}
       >
         <div
@@ -356,22 +364,28 @@ export function Board() {
         {/* TODO: We know how much of the board the user can see, and the sizes
             and positions of each doc - let's only render what is within the bounds
             of the viewport! */}
-        {/* TODO: transform all of the nodes at once, rather than individually*/}
-        {edges.map((edge) => (
-          <div
-            key={edge.dest}
-            style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              transform: `translate(${edge.data.x - viewX}px, ${
-                edge.data.y - viewY
-              }px)`,
-            }}
-          >
-            {renderEdge(edge)}
-          </div>
-        ))}
+
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            transform: `translate(${-viewX}px, ${-viewY}px)`,
+          }}
+        >
+          {edges.map((edge) => (
+            <div
+              key={edge.dest}
+              style={{
+                top: edge.data.y,
+                left: edge.data.x,
+                position: "fixed",
+              }}
+            >
+              {renderEdge(edge)}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
