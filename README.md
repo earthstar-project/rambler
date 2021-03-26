@@ -30,3 +30,5 @@ A hyperlinked spatial document browser and authoring environment.
     - use this so that this app can create and edit documents using other earthstar apps
 - Renders midi nodes
 - Renders coloured boxes
+- Renders disconnected nodes
+  - Lil old school red x box
