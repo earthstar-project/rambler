@@ -364,7 +364,6 @@ export function Board() {
         {/* TODO: We know how much of the board the user can see, and the sizes
             and positions of each doc - let's only render what is within the bounds
             of the viewport! */}
-
         <div
           style={{
             position: "fixed",

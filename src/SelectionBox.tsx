@@ -215,7 +215,7 @@ export function SelectionBox({
 
   const id = useId();
 
-  const documentOnClick = React.useCallback(
+  const documentOnMouseDown = React.useCallback(
     (event: Event) => {
       if (state === "blurred") {
         return;
@@ -263,14 +263,14 @@ export function SelectionBox({
   );
 
   React.useEffect(() => {
-    document.addEventListener("click", documentOnClick);
+    document.addEventListener("mousedown", documentOnMouseDown);
     document.addEventListener("keydown", onKeyDown);
 
     return () => {
-      document.removeEventListener("click", documentOnClick);
+      document.removeEventListener("click", documentOnMouseDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [documentOnClick, onKeyDown]);
+  }, [documentOnMouseDown, onKeyDown]);
 
   const [destDoc] = useDocument(edge.dest);
 
@@ -444,6 +444,19 @@ export function SelectionBox({
         transform: `translate(${tempTransform.x}px, ${tempTransform.y}px)`,
       }}
     >
+      {state === "focused"
+        ? [
+            { top: -4, left: -4 },
+            { top: -4, right: -4 },
+            { bottom: -4, left: -4 },
+            { bottom: -4, right: -4 },
+          ].map((style, i) => (
+            <TinyBoundaryBox
+              key={i}
+              style={{ ...style, position: "absolute" }}
+            />
+          ))
+        : []}
       {state !== "blurred" ? (
         <div
           style={{
@@ -528,5 +541,20 @@ export function SelectionBox({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function TinyBoundaryBox({ style }: { style: React.CSSProperties }) {
+  return (
+    <div
+      style={{
+        border: "1px solid rebeccapurple",
+        background: "white",
+        width: 8,
+        height: 8,
+        pointerEvents: "none",
+        ...style,
+      }}
+    />
   );
 }
