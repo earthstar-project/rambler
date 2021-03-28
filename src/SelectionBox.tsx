@@ -503,6 +503,7 @@ export function SelectionBox({
               : state === "focused"
               ? "rebeccapurple"
               : "green",
+          touchAction: "manipulation",
         }}
       >
         <SelectionContext.Provider value={{ editing: state === "editing" }}>
