@@ -190,19 +190,44 @@ export function Board() {
     [keysPressed]
   );
 
+  const documentOnMouseDown = React.useCallback(
+    (event: Event) => {
+      const isDocChooserClick = !!(event.target as Element)?.closest(
+        `#doc-chooser`
+      );
+      const isTentativePlacement = !!(event.target as Element)?.closest(
+        `#tentative-placement`
+      );
+
+      if (
+        isTentativePlacement ||
+        isDocChooserClick ||
+        operation !== "choosing-doc"
+      ) {
+        return;
+      }
+
+      setOperation("idle");
+      setCreatingArea(null);
+    },
+    [operation]
+  );
+
   React.useEffect(() => {
     const target = document;
 
     if (target) {
+      target.addEventListener("mousedown", documentOnMouseDown, false);
       target.addEventListener("keydown", onKeyDown, false);
       target.addEventListener("keyup", onKeyUp, false);
     }
 
     return () => {
+      target?.removeEventListener("mousedown", documentOnMouseDown);
       target?.removeEventListener("keydown", onKeyDown);
       target?.removeEventListener("keyup", onKeyUp);
     };
-  }, [onKeyDown, onKeyUp]);
+  }, [onKeyDown, onKeyUp, documentOnMouseDown]);
 
   React.useEffect(() => {
     requestAnimationFrame(() => {
@@ -428,6 +453,7 @@ export function Board() {
           ))}
           {creatingArea ? (
             <div
+              id={"tentative-placement"}
               ref={setCreatingBoxEl}
               style={{
                 border: "1px solid white",
@@ -444,6 +470,7 @@ export function Board() {
           ) : null}
           {operation === "choosing-doc" ? (
             <div
+              id={"doc-chooser"}
               ref={setChooserBoxEl}
               style={popperStyles.popper}
               {...popperAttributes.popper}
