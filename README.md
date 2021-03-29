@@ -24,10 +24,13 @@ A hyperlinked spatial document browser and authoring environment.
   - Make it so that you can tile an image too
 - ~~Add a 'status bar' (like when you hover over a URL) which shows who authored a doc, when, and where when hovering over a placed doc.~~
 - Implement a way to create or add existing documents to the board
-  - make a cute little file browser to navigate workspace docs for adding
-  - make a little bucket of edges with unplaced docs
-  - give react-earthstar a utility to read earthstar URLs
-    - use this so that this app can create and edit documents using other earthstar apps
+  - listen for a touch or click which lasts half a second without moving, using that to modify what happens during drag on canvas...
+  - after drag ends, pop open a little dialog widget for adding a document
+    - Existing (doc in workspace), opens a cutesy file browser
+      - Have a section for linked but unplaced docs close in proximity to the cursor
+    - New (text, image (triggers upload), coloured box, upload)
+- give react-earthstar a utility to read earthstar URLs
+  - use this so that this app can create and edit documents using other earthstar apps
 - Renders midi nodes
 - Renders coloured boxes
 - Renders disconnected nodes

@@ -118,11 +118,16 @@ function clampDelta(delta: number) {
 
   return delta;
 }
-function useTraversalEvents(
-  setX: React.Dispatch<React.SetStateAction<number>>,
-  setY: React.Dispatch<React.SetStateAction<number>>
-) {
-  const ref = React.useRef<HTMLDivElement>(null);
+
+// board component which manages the virtual canvas space
+export function Board() {
+  const storage = useStorage(WORKSPACE_ADDR);
+
+  const [viewX, setViewX] = React.useState(0);
+  const [viewY, setViewY] = React.useState(0);
+  const [isCreating, setIsCreating] = React.useState(false);
+
+  const canvasRef = React.useRef<HTMLDivElement>(null);
 
   const [keysPressed, setKeysPressed] = React.useState<Set<string>>(new Set());
   const [keyDeltaX, setKeyDeltaX] = React.useState(0);
@@ -195,57 +200,101 @@ function useTraversalEvents(
   }, [onKeyDown, onKeyUp]);
 
   React.useEffect(() => {
-    const next = nextDeltasWithKeys(
-      { deltaX: keyDeltaX, deltaY: keyDeltaY },
-      keysPressed
-    );
-
-    const finalX = clampDelta(next.deltaX);
-    const finalY = clampDelta(next.deltaY);
-
     requestAnimationFrame(() => {
-      setX((prev) => Math.round(prev + keyDeltaX));
-      setY((prev) => Math.round(prev + keyDeltaY));
+      const next = nextDeltasWithKeys(
+        { deltaX: keyDeltaX, deltaY: keyDeltaY },
+        keysPressed
+      );
+
+      const finalX = clampDelta(next.deltaX);
+      const finalY = clampDelta(next.deltaY);
+
+      setViewX((prev) => Math.round(prev + keyDeltaX));
+      setViewY((prev) => Math.round(prev + keyDeltaY));
 
       setKeyDeltaX(finalX);
       setKeyDeltaY(finalY);
     });
-  }, [keysPressed, keyDeltaX, keyDeltaY, setX, setY]);
+  }, [keysPressed, keyDeltaX, keyDeltaY]);
+
+  const startCreateTimeout = React.useRef<NodeJS.Timeout | undefined>();
+  const [creatingArea, setCreatingArea] = React.useState<null | {
+    position: Position;
+    size: Size;
+  }>(null);
 
   useGesture(
     {
-      onDrag: (drag) => {
-        const [x, y] = drag.delta;
-
+      onDragStart: (drag) => {
         drag.event.preventDefault();
+        drag.event.stopPropagation();
+        startCreateTimeout.current = setTimeout(() => {
+          setIsCreating(true);
+        }, 500);
+      },
+      onDrag: (drag) => {
+        //window.getSelection()?.removeAllRanges();
+        drag.event.preventDefault();
+        drag.event.stopPropagation();
+
+        const [movementX, movementY] = drag.movement;
+
+        if ((movementX > 4 || movementY > 4) && startCreateTimeout.current) {
+          clearTimeout(startCreateTimeout.current);
+        }
+
+        if (!isCreating) {
+          requestAnimationFrame(() => {
+            const [x, y] = drag.delta;
+
+            setViewX((prev) => prev - x);
+            setViewY((prev) => prev - y);
+          });
+        }
+
+        if (isCreating) {
+          const { left, top } = (drag.event
+            .currentTarget as Element).getBoundingClientRect();
+          requestAnimationFrame(() => {
+            const [initialX, initialY] = drag.initial;
+
+            const translatedX = initialX - left + viewX;
+            const translatedY = initialY - top + viewY;
+
+            const [width, height] = drag.movement;
+
+            setCreatingArea({
+              position: { x: translatedX, y: translatedY },
+              size: {
+                width,
+                height,
+              },
+            });
+          });
+        }
+      },
+      onDragEnd: () => {
+        if (startCreateTimeout.current) {
+          clearTimeout(startCreateTimeout.current);
+        }
 
         requestAnimationFrame(() => {
-          setX((prev) => prev - x);
-          setY((prev) => prev - y);
+          setIsCreating(false);
+          setCreatingArea(null);
         });
       },
       onWheel: (wheel) => {
-        const [x, y] = wheel.delta;
-
         requestAnimationFrame(() => {
-          setX((prev) => prev + x);
-          setY((prev) => prev + y);
+          const [x, y] = wheel.delta;
+          setViewX((prev) => prev + x);
+          setViewY((prev) => prev + y);
         });
       },
     },
     {
-      domTarget: ref,
+      domTarget: canvasRef,
     }
   );
-
-  return ref;
-}
-// board component which manages the virtual canvas space
-export function Board() {
-  const storage = useStorage(WORKSPACE_ADDR);
-
-  const [viewX, setViewX] = React.useState(0);
-  const [viewY, setViewY] = React.useState(0);
 
   const edges = useEdges<Position>({
     source: BOARD_PATH,
@@ -253,9 +302,6 @@ export function Board() {
   });
 
   const boardCorners = useBoardCorners(BOARD_PATH);
-
-  //const canvasRef = React.useRef<HTMLDivElement>(null);
-  const canvasRef = useTraversalEvents(setViewX, setViewY);
 
   // the size of the board as determined by its placed contents
   const intrinsicWidth = boardCorners.right - boardCorners.left;
@@ -302,6 +348,7 @@ export function Board() {
           width: "100vw",
           overflow: "auto",
           touchAction: "none",
+          cursor: isCreating ? "crosshair" : "auto",
         }}
         onDoubleClick={async (clickEvent) => {
           if (!storage) {
@@ -384,6 +431,21 @@ export function Board() {
               {renderEdge(edge)}
             </div>
           ))}
+          {creatingArea ? (
+            <div
+              style={{
+                border: "1px solid white",
+                top: creatingArea.position.y,
+                left: creatingArea.position.x,
+                width: creatingArea.size.width,
+                height: creatingArea.size.height,
+                background: "rgba(255,255,255, 0.4)",
+                borderRadius: 1,
+                position: "fixed",
+                touchAction: "none",
+              }}
+            ></div>
+          ) : null}
         </div>
       </div>
     </div>

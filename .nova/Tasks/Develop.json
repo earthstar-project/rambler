@@ -9,6 +9,6 @@
     "BROWSER" : "none"
   },
   "identifier" : "C787A63C-7DD0-4940-9D24-6285DA23780C",
-  "openLogOnRun" : "fail",
+  "openLogOnRun" : "start",
   "persistent" : true
 }
