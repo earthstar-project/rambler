@@ -217,8 +217,6 @@ export function SelectionBox({
 
   const documentOnMouseDown = React.useCallback(
     (event: Event) => {
-      event.preventDefault();
-
       if (state === "blurred") {
         return;
       }
@@ -357,17 +355,18 @@ export function SelectionBox({
         dragEvent.event.preventDefault();
         dragEvent.event.stopPropagation();
 
+        const [x, y] = dragEvent.delta;
+
         if (dragOperation !== "move" && dragOperation !== "none") {
+          const [x, y] = dragEvent.movement;
+
+          const { height, width, relativeX, relativeY } = resize(
+            dragOperation,
+            tempSizeReference,
+            { x, y }
+          );
+
           requestAnimationFrame(() => {
-            const [x, y] = dragEvent.movement;
-
-            const {
-              height,
-              width,
-              relativeX,
-              relativeY,
-            } = resize(dragOperation, tempSizeReference, { x, y });
-
             setTempTransform({
               x: relativeX,
               y: relativeY,
@@ -378,8 +377,6 @@ export function SelectionBox({
 
         if (dragOperation === "move") {
           requestAnimationFrame(() => {
-            const [x, y] = dragEvent.delta;
-
             setTempTransform((prev) => ({
               x: prev.x + x,
               y: prev.y + y,
@@ -426,9 +423,12 @@ export function SelectionBox({
           });
         }
 
-        setTempSizeReference({ width: 0, height: 0 });
-        setTempTransform({ x: 0, y: 0 });
-        setTempResize(null);
+        requestAnimationFrame(() => {
+          setTempSizeReference({ width: 0, height: 0 });
+          setTempTransform({ x: 0, y: 0 });
+          setTempResize(null);
+        });
+
         setDragOperation("none");
       },
     },
@@ -503,7 +503,6 @@ export function SelectionBox({
               : state === "focused"
               ? "rebeccapurple"
               : "green",
-          touchAction: "manipulation",
         }}
       >
         <SelectionContext.Provider value={{ editing: state === "editing" }}>

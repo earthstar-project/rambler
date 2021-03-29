@@ -3,6 +3,7 @@ import { isErr } from "earthstar";
 import { useStorage } from "react-earthstar";
 import { EdgeContent, writeEdge } from "earthstar-graph-db";
 import { useGesture } from "react-use-gesture";
+import { usePopper } from "react-popper";
 import { WORKSPACE_ADDR, TEST_AUTHOR, BOARD_PATH } from "./constants";
 import { useEdges } from "./useEdges";
 import { TextNode } from "./TextNode";
@@ -107,6 +108,7 @@ function nextDeltasWithKeys(
 
   return next;
 }
+
 function clampDelta(delta: number) {
   if (Math.abs(delta) < 1) {
     return 0;
@@ -119,19 +121,22 @@ function clampDelta(delta: number) {
   return delta;
 }
 
+type BoardOperation = "idle" | "dragging" | "placing-doc" | "choosing-doc";
+
 // board component which manages the virtual canvas space
 export function Board() {
   const storage = useStorage(WORKSPACE_ADDR);
 
   const [viewX, setViewX] = React.useState(0);
   const [viewY, setViewY] = React.useState(0);
-  const [isCreating, setIsCreating] = React.useState(false);
 
   const canvasRef = React.useRef<HTMLDivElement>(null);
 
   const [keysPressed, setKeysPressed] = React.useState<Set<string>>(new Set());
   const [keyDeltaX, setKeyDeltaX] = React.useState(0);
   const [keyDeltaY, setKeyDeltaY] = React.useState(0);
+
+  const [operation, setOperation] = React.useState<BoardOperation>("idle");
 
   const onKeyDown = React.useCallback(
     (keyEvent: KeyboardEvent) => {
@@ -228,12 +233,17 @@ export function Board() {
       onDragStart: (drag) => {
         drag.event.preventDefault();
         drag.event.stopPropagation();
+        if (operation === "choosing-doc") {
+          return;
+        }
+
+        setCreatingArea(null);
         startCreateTimeout.current = setTimeout(() => {
-          setIsCreating(true);
+          setOperation("placing-doc");
         }, 500);
+        setOperation("dragging");
       },
       onDrag: (drag) => {
-        //window.getSelection()?.removeAllRanges();
         drag.event.preventDefault();
         drag.event.stopPropagation();
 
@@ -243,7 +253,7 @@ export function Board() {
           clearTimeout(startCreateTimeout.current);
         }
 
-        if (!isCreating) {
+        if (operation === "dragging") {
           requestAnimationFrame(() => {
             const [x, y] = drag.delta;
 
@@ -252,7 +262,7 @@ export function Board() {
           });
         }
 
-        if (isCreating) {
+        if (operation === "placing-doc") {
           const { left, top } = (drag.event
             .currentTarget as Element).getBoundingClientRect();
           requestAnimationFrame(() => {
@@ -278,9 +288,16 @@ export function Board() {
           clearTimeout(startCreateTimeout.current);
         }
 
-        requestAnimationFrame(() => {
-          setIsCreating(false);
-          setCreatingArea(null);
+        if (operation === "choosing-doc") {
+          return;
+        }
+
+        setOperation((prev) => {
+          if (prev === "placing-doc") {
+            return "choosing-doc";
+          }
+
+          return "idle";
         });
       },
       onWheel: (wheel) => {
@@ -336,6 +353,23 @@ export function Board() {
     }
   }, [boardCorners.top, boardCorners.left, viewX, viewY, canvasRef]);
 
+  const [
+    creatingBoxEl,
+    setCreatingBoxEl,
+  ] = React.useState<HTMLDivElement | null>(null);
+  const [chooserEl, setChooserBoxEl] = React.useState<HTMLDivElement | null>(
+    null
+  );
+  const [arrowEl, setArrowEl] = React.useState<HTMLDivElement | null>(null);
+
+  const { styles: popperStyles, attributes: popperAttributes } = usePopper(
+    creatingBoxEl,
+    chooserEl,
+    {
+      modifiers: [{ name: "arrow", options: { element: arrowEl } }],
+    }
+  );
+
   return (
     <div>
       <div
@@ -348,52 +382,13 @@ export function Board() {
           width: "100vw",
           overflow: "auto",
           touchAction: "none",
-          cursor: isCreating ? "crosshair" : "auto",
-        }}
-        onDoubleClick={async (clickEvent) => {
-          if (!storage) {
-            return;
-          }
-
-          const {
-            left,
-            top,
-          } = clickEvent.currentTarget.getBoundingClientRect();
-
-          const x = clickEvent.clientX - left;
-          const y = clickEvent.clientY - top;
-
-          const translatedX = x + viewX;
-          const translatedY = y + viewY;
-
-          const docPath = `/notes/${Date.now()}.txt`;
-
-          const writeResult = await storage?.set(TEST_AUTHOR, {
-            content: "Hello there!",
-            format: "es.4",
-            path: docPath,
-          });
-
-          if (isErr(writeResult)) {
-            console.error(writeResult);
-            return;
-          }
-
-          writeEdge(storage, TEST_AUTHOR, {
-            owner: "common",
-            data: { x: translatedX, y: translatedY },
-            source: BOARD_PATH,
-            dest: docPath,
-            kind: "PLACED",
-          });
-
-          writeEdge(storage, TEST_AUTHOR, {
-            owner: "common",
-            data: { width: 100, height: 100 },
-            source: BOARD_PATH,
-            dest: docPath,
-            kind: "SIZED",
-          });
+          cursor:
+            operation === "placing-doc"
+              ? "crosshair"
+              : operation === "dragging"
+              ? "grabbing"
+              : "auto",
+          WebkitUserSelect: "none",
         }}
       >
         <div
@@ -433,6 +428,7 @@ export function Board() {
           ))}
           {creatingArea ? (
             <div
+              ref={setCreatingBoxEl}
               style={{
                 border: "1px solid white",
                 top: creatingArea.position.y,
@@ -445,6 +441,66 @@ export function Board() {
                 touchAction: "none",
               }}
             ></div>
+          ) : null}
+          {operation === "choosing-doc" ? (
+            <div
+              ref={setChooserBoxEl}
+              style={popperStyles.popper}
+              {...popperAttributes.popper}
+            >
+              {/* TODO: The doc chooser! */}
+              <button
+                style={{ width: 100 }}
+                onClick={async () => {
+                  if (!storage) {
+                    return;
+                  }
+
+                  if (!creatingArea) {
+                    return;
+                  }
+
+                  const docPath = `/notes/${Date.now()}.txt`;
+
+                  const writeResult = await storage?.set(TEST_AUTHOR, {
+                    content: "Hello there!",
+                    format: "es.4",
+                    path: docPath,
+                  });
+
+                  if (isErr(writeResult)) {
+                    console.error(writeResult);
+                    return;
+                  }
+
+                  await writeEdge(storage, TEST_AUTHOR, {
+                    owner: "common",
+                    data: creatingArea.position,
+                    source: BOARD_PATH,
+                    dest: docPath,
+                    kind: "PLACED",
+                  });
+
+                  await writeEdge(storage, TEST_AUTHOR, {
+                    owner: "common",
+                    data: creatingArea.size,
+                    source: BOARD_PATH,
+                    dest: docPath,
+                    kind: "SIZED",
+                  });
+
+                  setCreatingArea(null);
+                  setOperation("idle");
+                }}
+              >
+                {"Add a text note here!"}
+              </button>
+              <div
+                ref={setArrowEl}
+                style={popperStyles.arrow}
+                {...popperAttributes.arrow}
+              />
+            </div>
           ) : null}
         </div>
       </div>
