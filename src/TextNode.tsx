@@ -9,22 +9,28 @@ export function TextNode<EdgeData>({
 }: {
   edge: Omit<EdgeContent, "data"> & EdgeData;
 }) {
-  const [textDoc, setTextDoc] = useDocument(edge.dest);
+  const [textDoc, setTextDoc, , docStatus] = useDocument(edge.dest);
   const { editing } = React.useContext(SelectionContext);
   const [textValue, setTextValue] = React.useState(textDoc?.content || "");
 
   const [debouncedTextValue] = useDebounce(textValue, 1000);
 
   React.useEffect(() => {
-    if (textValue === "" && textDoc?.content) {
+    if (textValue === "" && textDoc?.content && docStatus === "success") {
       setTextValue(textDoc.content);
     }
-  }, [textDoc?.content, debouncedTextValue, textValue]);
+  }, [textDoc?.content, textValue, docStatus]);
 
   React.useEffect(() => {
-    if (debouncedTextValue !== textDoc?.content) {
+    let ignore = false;
+
+    if (debouncedTextValue !== textDoc?.content && !ignore) {
       setTextDoc(debouncedTextValue);
     }
+
+    return () => {
+      ignore = true;
+    };
   }, [setTextDoc, debouncedTextValue, textDoc?.content]);
 
   return (
