@@ -1,14 +1,12 @@
 import * as React from "react";
-import { isErr } from "earthstar";
-import { useStorage } from "react-earthstar";
-import { EdgeContent, writeEdge } from "earthstar-graph-db";
+import { EdgeContent } from "earthstar-graph-db";
 import { useGesture } from "react-use-gesture";
 import { usePopper } from "react-popper";
-import { WORKSPACE_ADDR, TEST_AUTHOR, BOARD_PATH } from "./constants";
 import { useEdges } from "./useEdges";
 import { TextNode } from "./TextNode";
 import { SelectionBox } from "./SelectionBox";
 import { Position, Size } from "./types";
+import DocChooser from "./DocChooser";
 
 // Get the coordinates of the top left and bottom right of the board using the document placements within it
 function useBoardCorners(boardPath: string) {
@@ -124,9 +122,7 @@ function clampDelta(delta: number) {
 type BoardOperation = "idle" | "dragging" | "placing-doc" | "choosing-doc";
 
 // board component which manages the virtual canvas space
-export function Board() {
-  const storage = useStorage(WORKSPACE_ADDR);
-
+export function Board({ boardPath }: { boardPath: string }) {
   const [viewX, setViewX] = React.useState(0);
   const [viewY, setViewY] = React.useState(0);
 
@@ -339,11 +335,11 @@ export function Board() {
   );
 
   const edges = useEdges<Position>({
-    source: BOARD_PATH,
+    source: boardPath,
     kind: "PLACED",
   });
 
-  const boardCorners = useBoardCorners(BOARD_PATH);
+  const boardCorners = useBoardCorners(boardPath);
 
   // the size of the board as determined by its placed contents
   const intrinsicWidth = boardCorners.right - boardCorners.left;
@@ -468,60 +464,22 @@ export function Board() {
               }}
             ></div>
           ) : null}
-          {operation === "choosing-doc" ? (
+          {operation === "choosing-doc" && creatingArea ? (
             <div
               id={"doc-chooser"}
               ref={setChooserBoxEl}
               style={popperStyles.popper}
               {...popperAttributes.popper}
             >
-              {/* TODO: The doc chooser! */}
-              <button
-                style={{ width: 100 }}
-                onClick={async () => {
-                  if (!storage) {
-                    return;
-                  }
-
-                  if (!creatingArea) {
-                    return;
-                  }
-
-                  const docPath = `/notes/${Date.now()}.txt`;
-
-                  const writeResult = await storage?.set(TEST_AUTHOR, {
-                    content: "Hello there!",
-                    format: "es.4",
-                    path: docPath,
-                  });
-
-                  if (isErr(writeResult)) {
-                    console.error(writeResult);
-                    return;
-                  }
-
-                  await writeEdge(storage, TEST_AUTHOR, {
-                    owner: "common",
-                    data: creatingArea.position,
-                    source: BOARD_PATH,
-                    dest: docPath,
-                    kind: "PLACED",
-                  });
-
-                  await writeEdge(storage, TEST_AUTHOR, {
-                    owner: "common",
-                    data: creatingArea.size,
-                    source: BOARD_PATH,
-                    dest: docPath,
-                    kind: "SIZED",
-                  });
-
+              <DocChooser
+                boardPath={boardPath}
+                position={creatingArea.position}
+                size={creatingArea.size}
+                onPlacedDoc={() => {
                   setCreatingArea(null);
                   setOperation("idle");
                 }}
-              >
-                {"Add a text note here!"}
-              </button>
+              />
               <div
                 ref={setArrowEl}
                 style={popperStyles.arrow}

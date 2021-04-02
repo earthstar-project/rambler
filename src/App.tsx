@@ -2,7 +2,7 @@ import * as React from "react";
 import { StorageLocalStorage, ValidatorEs4, StorageToAsync } from "earthstar";
 import { EarthstarPeer } from "react-earthstar";
 import "./App.css";
-import { WORKSPACE_ADDR, PUBS, TEST_AUTHOR } from "./constants";
+import { WORKSPACE_ADDR, PUBS, TEST_AUTHOR, BOARD_PATH } from "./constants";
 import { Board } from "./Board";
 
 const WorkspaceStorage = new StorageToAsync(
@@ -18,7 +18,7 @@ function App() {
       initCurrentAuthor={TEST_AUTHOR}
       initIsLive={true}
     >
-      <Board />
+      <Board boardPath={BOARD_PATH} />
     </EarthstarPeer>
   );
 }
