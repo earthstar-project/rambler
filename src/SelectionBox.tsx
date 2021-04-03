@@ -5,13 +5,12 @@ import {
   useDocument,
   useStorage,
 } from "react-earthstar";
-import { EdgeContent, writeEdge } from "earthstar-graph-db";
 import { useGesture } from "react-use-gesture";
 import { useId } from "@reach/auto-id";
 import { formatDistance } from "date-fns";
-import { useEdges } from "./useEdges";
+import { useBoardEdge } from "./useEdges";
 import { SelectionContext } from "./SelectionContext";
-import { Position, Size } from "./types";
+import { BoardEdge, Size } from "./types";
 import { useUnlinkDocFromBoard } from "./utils";
 
 type SelectionState = "hovered" | "blurred" | "focused" | "editing";
@@ -191,7 +190,7 @@ export function SelectionBox({
   edge,
   children,
 }: {
-  edge: EdgeContent;
+  edge: BoardEdge;
   children: React.ReactNode;
 }) {
   const storage = useStorage();
@@ -202,16 +201,10 @@ export function SelectionBox({
   );
   const ref = React.useRef<HTMLDivElement>(null);
 
-  const [placedEdge] = useEdges<Position>({
-    source: edge.source,
-    dest: edge.dest,
-    kind: "PLACED",
-  });
-  const [sizedEdge] = useEdges<Size>({
-    source: edge.source,
-    dest: edge.dest,
-    kind: "SIZED",
-  });
+  const { edge: boardEdge, setPosition, setSize } = useBoardEdge(
+    edge.source,
+    edge.dest
+  );
 
   const id = useId();
 
@@ -389,37 +382,29 @@ export function SelectionBox({
           return;
         }
 
-        if (dragOperation === "move") {
-          await writeEdge(storage, currentAuthor, {
-            dest: edge.dest,
-            source: edge.source,
-            kind: "PLACED",
-            owner: "common",
-            data: {
-              x: placedEdge?.data.x + tempTransform.x,
-              y: placedEdge?.data.y + tempTransform.y,
-            },
+        if (dragOperation === "move" && boardEdge) {
+          requestAnimationFrame(() => {
+            setPosition({
+              x: boardEdge?.position.x + tempTransform.x,
+              y: boardEdge?.position.y + tempTransform.y,
+            });
           });
         }
 
         // TODO: isDragOperation helper
-        if (dragOperation !== "move" && dragOperation !== "none") {
-          await writeEdge(storage, currentAuthor, {
-            dest: edge.dest,
-            source: edge.source,
-            kind: "PLACED",
-            owner: "common",
-            data: {
-              x: placedEdge?.data.x + tempTransform.x,
-              y: placedEdge?.data.y + tempTransform.y,
-            },
-          });
-          await writeEdge(storage, currentAuthor, {
-            dest: edge.dest,
-            source: edge.source,
-            kind: "SIZED",
-            owner: "common",
-            data: tempResize,
+        if (
+          dragOperation !== "move" &&
+          dragOperation !== "none" &&
+          boardEdge &&
+          tempResize
+        ) {
+          requestAnimationFrame(() => {
+            setPosition({
+              x: boardEdge?.position.x + tempTransform.x,
+              y: boardEdge?.position.y + tempTransform.y,
+            });
+
+            setSize(tempResize);
           });
         }
 
@@ -427,9 +412,8 @@ export function SelectionBox({
           setTempSizeReference({ width: 0, height: 0 });
           setTempTransform({ x: 0, y: 0 });
           setTempResize(null);
+          setDragOperation("none");
         });
-
-        setDragOperation("none");
       },
     },
     { domTarget: ref }
@@ -488,10 +472,10 @@ export function SelectionBox({
           overflow: "auto",
           width: tempResize
             ? tempResize.width
-            : sizedEdge?.data?.width || "auto",
+            : boardEdge?.size.width || "auto",
           height: tempResize
             ? tempResize.height
-            : sizedEdge?.data?.height || "auto",
+            : boardEdge?.size.height || "auto",
 
           borderWidth: 1,
           borderStyle: state === "hovered" ? "dashed" : "solid",

@@ -1,30 +1,33 @@
 import * as React from "react";
 import { useDocument } from "react-earthstar";
-import { EdgeContent } from "earthstar-graph-db";
 import { useDebounce } from "use-debounce";
 import { SelectionContext } from "./SelectionContext";
+import { BoardEdge } from "./types";
 
-export function TextNode<EdgeData>({
-  edge,
-}: {
-  edge: Omit<EdgeContent, "data"> & EdgeData;
-}) {
-  const [textDoc, setTextDoc, , docStatus] = useDocument(edge.dest);
+export function TextNode({ edge }: { edge: BoardEdge }) {
+  const [textDoc, setTextDoc] = useDocument(edge.dest);
   const { editing } = React.useContext(SelectionContext);
   const [textValue, setTextValue] = React.useState(textDoc?.content || "");
 
   const [debouncedTextValue] = useDebounce(textValue, 1000);
 
+  const hasInitialised = React.useRef(false);
+
   React.useEffect(() => {
-    if (textValue === "" && textDoc?.content && docStatus === "success") {
+    if (textValue === "" && textDoc?.content && !hasInitialised.current) {
       setTextValue(textDoc.content);
+      hasInitialised.current = true;
     }
-  }, [textDoc?.content, textValue, docStatus]);
+  }, [textDoc?.content, textValue]);
 
   React.useEffect(() => {
     let ignore = false;
 
-    if (debouncedTextValue !== textDoc?.content && !ignore) {
+    if (
+      debouncedTextValue !== textDoc?.content &&
+      !ignore &&
+      hasInitialised.current
+    ) {
       setTextDoc(debouncedTextValue);
     }
 

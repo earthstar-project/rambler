@@ -1,12 +1,12 @@
 import * as React from "react";
-import { EdgeContent } from "earthstar-graph-db";
 import { useGesture } from "react-use-gesture";
 import { usePopper } from "react-popper";
-import { useEdges } from "./useEdges";
+import { useBoardEdges, useEdges } from "./useEdges";
 import { TextNode } from "./TextNode";
 import { SelectionBox } from "./SelectionBox";
-import { Position, Size } from "./types";
+import { BoardEdge, Position, Size } from "./types";
 import DocChooser from "./DocChooser";
+import { BoardContext } from "./BoardStore";
 
 // Get the coordinates of the top left and bottom right of the board using the document placements within it
 function useBoardCorners(boardPath: string) {
@@ -39,16 +39,14 @@ type EdgeRenderType = "text" | "unknown";
 // e.g. 'starts with '/lobby' so render a speech bubble
 // ends with .midi so render a music player
 // is in /todo/ so knows to render todo stuff
-function getEdgeRenderType<EdgeData>(
-  edge: Omit<EdgeContent, "data"> & EdgeData
-): EdgeRenderType {
+function getEdgeRenderType(edge: BoardEdge): EdgeRenderType {
   if (edge.dest.endsWith(".txt")) {
     return "text";
   }
 
   return "unknown";
 }
-function renderEdge<EdgeData>(edge: Omit<EdgeContent, "data"> & EdgeData) {
+function renderEdge(edge: BoardEdge) {
   switch (getEdgeRenderType(edge)) {
     case "text":
       return (
@@ -334,10 +332,7 @@ export function Board({ boardPath }: { boardPath: string }) {
     }
   );
 
-  const edges = useEdges<Position>({
-    source: boardPath,
-    kind: "PLACED",
-  });
+  const edges = useBoardEdges(boardPath);
 
   const boardCorners = useBoardCorners(boardPath);
 
@@ -391,6 +386,10 @@ export function Board({ boardPath }: { boardPath: string }) {
     }
   );
 
+  const { optimisticPositions } = React.useContext(BoardContext);
+
+  console.log("so confused 😭");
+
   return (
     <div>
       <div
@@ -439,8 +438,8 @@ export function Board({ boardPath }: { boardPath: string }) {
             <div
               key={edge.dest}
               style={{
-                top: edge.data.y,
-                left: edge.data.x,
+                top: optimisticPositions.get(edge.dest)?.y || edge.position.y,
+                left: optimisticPositions.get(edge.dest)?.x || edge.position.x,
                 position: "fixed",
               }}
             >
