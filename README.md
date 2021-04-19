@@ -29,7 +29,10 @@ A hyperlinked spatial document browser and authoring environment.
     - New (~~text~~, ~~image (triggers upload)~~, coloured box, midi)
 - give react-earthstar a utility to read earthstar URLs
   - use this so that this app can create and edit documents using other earthstar apps
+- text styling
 - Renders midi nodes
+  - midi nodes become quieter and louder depending on their proximity to your viewport
 - Renders coloured boxes
 - Renders disconnected nodes
   - Lil old school red x box
+- A way to control the z-index of nodes

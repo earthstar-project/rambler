@@ -8,22 +8,9 @@ export function TextNode({ edge }: { edge: BoardEdge }) {
   const storage = useStorage();
   const [currentAuthor] = useCurrentAuthor();
 
-  const textDoc = storage?.getDocument(edge.dest);
+  const textContent = storage?.getContent(edge.dest);
 
   const { editing } = React.useContext(SelectionContext);
-  const [textValue, setTextValue] = React.useState(textDoc?.content || "");
-
-  const [debouncedTextValue] = useDebounce(textValue, 1000);
-
-  React.useEffect(() => {
-    if (debouncedTextValue !== textDoc?.content && currentAuthor && storage) {
-      storage.set(currentAuthor, {
-        content: debouncedTextValue,
-        path: edge.dest,
-        format: "es.4",
-      });
-    }
-  }, [debouncedTextValue, textDoc?.content, storage, currentAuthor, edge.dest]);
 
   return (
     <textarea
@@ -41,13 +28,21 @@ export function TextNode({ edge }: { edge: BoardEdge }) {
         touchAction: "none",
       }}
       readOnly={!currentAuthor || !editing}
-      value={textValue}
+      value={textContent}
       onChange={(e) => {
         if (!editing) {
           return;
         }
 
-        setTextValue(e.target.value);
+        if (!currentAuthor) {
+          return;
+        }
+
+        storage.set(currentAuthor, {
+          content: e.target.value,
+          path: edge.dest,
+          format: "es.4",
+        });
       }}
     />
   );
