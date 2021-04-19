@@ -110,6 +110,7 @@ export function useBoardEdges(boardPath: string): BoardEdge[] {
     );
 
     return {
+      path: placedEdge.path,
       source: placedEdge.source,
       dest: placedEdge.dest,
       owner: placedEdge.owner,

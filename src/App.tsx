@@ -12,7 +12,7 @@ function App() {
       initPubs={{ [WORKSPACE_ADDR]: PUBS }}
       initCurrentWorkspace={WORKSPACE_ADDR}
       initCurrentAuthor={TEST_AUTHOR}
-      initIsLive={false}
+      initIsLive={true}
       onCreateWorkspace={(address) =>
         new StorageLocalStorage([ValidatorEs4], address)
       }

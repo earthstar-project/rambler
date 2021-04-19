@@ -6,6 +6,7 @@ import { TextNode } from "./TextNode";
 import { SelectionBox } from "./SelectionBox";
 import { BoardEdge, Position, Size } from "./types";
 import DocChooser from "./DocChooser";
+import ImageNode from "./ImageNode";
 
 // Get the coordinates of the top left and bottom right of the board using the document placements within it
 function getBoardCorners(edges: BoardEdge[]) {
@@ -21,8 +22,11 @@ function getBoardCorners(edges: BoardEdge[]) {
     { top: 0, left: 0, bottom: 0, right: 0 }
   );
 }
+
+const imageExtensions = ["gif", "jpg", "png", "jpeg"];
+
 // Determine what kind of node is at the end of an edge and how to render it
-type EdgeRenderType = "text" | "unknown";
+type EdgeRenderType = "image" | "text" | "unknown";
 // e.g. 'starts with '/lobby' so render a speech bubble
 // ends with .midi so render a music player
 // is in /todo/ so knows to render todo stuff
@@ -31,19 +35,31 @@ function getEdgeRenderType(edge: BoardEdge): EdgeRenderType {
     return "text";
   }
 
+  if (imageExtensions.includes(edge.dest.split(".").pop() || "")) {
+    return "image";
+  }
+
   return "unknown";
 }
 function renderEdge(edge: BoardEdge) {
   switch (getEdgeRenderType(edge)) {
     case "text":
       return (
-        <SelectionBox key={edge.source} edge={edge}>
+        <SelectionBox key={edge.dest} edge={edge}>
           <TextNode edge={edge} />
+        </SelectionBox>
+      );
+    case "image":
+      return (
+        <SelectionBox key={edge.dest} edge={edge}>
+          <ImageNode edge={edge} />
         </SelectionBox>
       );
     default:
       return (
-        <div style={{ border: "2px solid black", borderRadius: "50%" }}></div>
+        <div style={{ border: "2px solid black", borderRadius: "50%" }}>
+          {edge.dest}
+        </div>
       );
   }
 }

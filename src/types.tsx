@@ -7,4 +7,5 @@ export type BoardEdge = {
   dest: string;
   source: string;
   owner: string;
+  path: string;
 };
