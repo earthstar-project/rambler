@@ -1,40 +1,29 @@
 import * as React from "react";
-import { useDocument } from "react-earthstar";
+import { useCurrentAuthor, useStorage } from "react-earthstar";
 import { useDebounce } from "use-debounce";
 import { SelectionContext } from "./SelectionContext";
 import { BoardEdge } from "./types";
 
 export function TextNode({ edge }: { edge: BoardEdge }) {
-  const [textDoc, setTextDoc] = useDocument(edge.dest);
+  const storage = useStorage();
+  const [currentAuthor] = useCurrentAuthor();
+
+  const textDoc = storage?.getDocument(edge.dest);
+
   const { editing } = React.useContext(SelectionContext);
   const [textValue, setTextValue] = React.useState(textDoc?.content || "");
 
   const [debouncedTextValue] = useDebounce(textValue, 1000);
 
-  const hasInitialised = React.useRef(false);
-
   React.useEffect(() => {
-    if (textValue === "" && textDoc?.content && !hasInitialised.current) {
-      setTextValue(textDoc.content);
-      hasInitialised.current = true;
+    if (debouncedTextValue !== textDoc?.content && currentAuthor && storage) {
+      storage.set(currentAuthor, {
+        content: debouncedTextValue,
+        path: edge.dest,
+        format: "es.4",
+      });
     }
-  }, [textDoc?.content, textValue]);
-
-  React.useEffect(() => {
-    let ignore = false;
-
-    if (
-      debouncedTextValue !== textDoc?.content &&
-      !ignore &&
-      hasInitialised.current
-    ) {
-      setTextDoc(debouncedTextValue);
-    }
-
-    return () => {
-      ignore = true;
-    };
-  }, [setTextDoc, debouncedTextValue, textDoc?.content]);
+  }, [debouncedTextValue, textDoc?.content, storage, currentAuthor, edge.dest]);
 
   return (
     <textarea
@@ -51,7 +40,7 @@ export function TextNode({ edge }: { edge: BoardEdge }) {
         overscrollBehavior: "none",
         touchAction: "none",
       }}
-      readOnly={!editing}
+      readOnly={!currentAuthor || !editing}
       value={textValue}
       onChange={(e) => {
         if (!editing) {

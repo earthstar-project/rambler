@@ -1,19 +1,13 @@
 import * as React from "react";
-import { isErr, Document } from "earthstar";
-import {
-  useCurrentAuthor,
-  useStorage,
-  useSubscribeToStorages,
-} from "react-earthstar";
+import { isErr } from "earthstar";
+import { useCurrentAuthor, useStorage } from "react-earthstar";
 import {
   EdgeContent,
-  findEdgesAsync,
+  findEdges,
   GraphQuery,
   writeEdge,
 } from "earthstar-graph-db";
-import useDeepCompareEffect from "use-deep-compare-effect";
 import { BoardEdge, Position, Size } from "./types";
-import { BoardContext } from "./BoardStore";
 
 // TODO: pull this into react-earthstar
 export function useEdges<EdgeData>(
@@ -22,45 +16,43 @@ export function useEdges<EdgeData>(
 ): (Omit<EdgeContent, "data"> & { data: EdgeData; path: string })[] {
   const storage = useStorage(workspaceAddress);
 
-  const [edges, setEdges] = React.useState<Document[]>([]);
+  const [edges, setEdges] = React.useState(() => {
+    if (storage) {
+      const result = findEdges(storage, query);
 
-  useDeepCompareEffect(() => {
-    let ignore = false;
-
-    if (!storage) {
-      return;
+      return isErr(result) ? [] : result;
     }
 
-    findEdgesAsync(storage, query).then((edges) => {
-      if (!isErr(edges) && !ignore) {
-        setEdges(edges);
-      }
-    });
-
-    return () => {
-      ignore = true;
-    };
-  }, [storage, query]);
-
-  const { dest, kind, owner, source } = query;
-
-  const onWrite = React.useCallback(() => {
-    if (!storage) {
-      return;
-    }
-
-    // TODO: this is a real horror...
-    findEdgesAsync(storage, { dest, kind, owner, source }).then((edges) => {
-      if (!isErr(edges)) {
-        setEdges(edges);
-      }
-    });
-  }, [dest, kind, owner, source, storage]);
-
-  useSubscribeToStorages({
-    workspaces: storage ? [storage.workspace] : [],
-    onWrite,
+    return [];
   });
+
+  const queryMemo = React.useMemo(
+    () => ({
+      dest: query.dest,
+      source: query.source,
+      kind: query.kind,
+      owner: query.owner,
+    }),
+    [query.dest, query.kind, query.owner, query.source]
+  );
+
+  React.useEffect(() => {
+    const unsubscribe = storage.onWrite.subscribe(() => {
+      const result = findEdges(storage, queryMemo);
+
+      const edges = isErr(result) ? [] : result;
+
+      setEdges(edges);
+    });
+
+    return unsubscribe;
+  }, [queryMemo, storage]);
+
+  // const edges = storage ? findEdges(storage, query) : [];
+
+  if (isErr(edges)) {
+    return [];
+  }
 
   return edges.map((edgeDoc) => ({
     path: edgeDoc.path,
@@ -127,35 +119,14 @@ export function useBoardEdges(boardPath: string): BoardEdge[] {
   });
 }
 
-export function useBoardEdge(
-  boardPath: string,
-  destPath: string
+export function useSetBoardEdge(
+  edge: BoardEdge
 ): {
-  edge: BoardEdge | undefined;
   setPosition: (position: Position) => void;
   setSize: (size: Size) => void;
 } {
   const storage = useStorage();
   const [currentAuthor] = useCurrentAuthor();
-
-  const [firstPlacedEdge] = useEdges<Position>({
-    source: boardPath,
-    dest: destPath,
-    kind: "PLACED",
-  });
-
-  const [firstSizedEdge] = useEdges<Size>({
-    source: boardPath,
-    dest: destPath,
-    kind: "SIZED",
-  });
-
-  const {
-    optimisticPositions,
-    optimisticSizes,
-    setOptimisticPosition,
-    setOptimisticSize,
-  } = React.useContext(BoardContext);
 
   const setPosition = React.useCallback(
     async (position: Position) => {
@@ -167,26 +138,15 @@ export function useBoardEdge(
         return;
       }
 
-      setOptimisticPosition(destPath, position);
-
       await writeEdge(storage, currentAuthor, {
-        source: boardPath,
-        dest: destPath,
-        owner: firstPlacedEdge?.owner,
+        source: edge.source,
+        dest: edge.dest,
+        owner: edge.owner,
         kind: "PLACED",
         data: position,
       });
-
-      setOptimisticPosition(destPath, null);
     },
-    [
-      boardPath,
-      currentAuthor,
-      storage,
-      firstPlacedEdge?.owner,
-      destPath,
-      setOptimisticPosition,
-    ]
+    [edge.source, edge.dest, edge.owner, currentAuthor, storage]
   );
 
   const setSize = React.useCallback(
@@ -199,42 +159,18 @@ export function useBoardEdge(
         return;
       }
 
-      setOptimisticSize(destPath, size);
-
       await writeEdge(storage, currentAuthor, {
-        source: boardPath,
-        dest: destPath,
-        owner: firstPlacedEdge?.owner,
+        source: edge.source,
+        dest: edge.dest,
+        owner: edge.owner,
         kind: "SIZED",
         data: size,
       });
-
-      setOptimisticSize(destPath, null);
     },
-    [
-      boardPath,
-      currentAuthor,
-      storage,
-      firstPlacedEdge?.owner,
-      destPath,
-      setOptimisticSize,
-    ]
+    [edge.source, edge.dest, edge.owner, currentAuthor, storage]
   );
 
-  const optimisticPosition = optimisticPositions.get(destPath);
-  const optimisticSize = optimisticSizes.get(destPath);
-
   return {
-    edge:
-      firstPlacedEdge && hasPosition(firstPlacedEdge)
-        ? {
-            source: firstPlacedEdge.source,
-            dest: firstPlacedEdge.dest,
-            owner: firstPlacedEdge.owner,
-            position: optimisticPosition || firstPlacedEdge.data,
-            size: optimisticSize || getSize(firstSizedEdge?.data),
-          }
-        : undefined,
     setSize,
     setPosition,
   };

@@ -35,7 +35,7 @@ export default function DocChooser({
 
         const docPath = `/notes/${Date.now()}.txt`;
 
-        const writeResult = await storage?.set(currentAuthor, {
+        const writeResult = storage.set(currentAuthor, {
           content: "Hello there!",
           format: "es.4",
           path: docPath,

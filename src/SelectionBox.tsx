@@ -1,14 +1,9 @@
 import * as React from "react";
-import {
-  AuthorLabel,
-  useCurrentAuthor,
-  useDocument,
-  useStorage,
-} from "react-earthstar";
+import { AuthorLabel, useCurrentAuthor, useStorage } from "react-earthstar";
 import { useGesture } from "react-use-gesture";
 import { useId } from "@reach/auto-id";
 import { formatDistance } from "date-fns";
-import { useBoardEdge } from "./useEdges";
+import { useSetBoardEdge } from "./useEdges";
 import { SelectionContext } from "./SelectionContext";
 import { BoardEdge, Size } from "./types";
 import { useUnlinkDocFromBoard } from "./utils";
@@ -201,10 +196,7 @@ export function SelectionBox({
   );
   const ref = React.useRef<HTMLDivElement>(null);
 
-  const { edge: boardEdge, setPosition, setSize } = useBoardEdge(
-    edge.source,
-    edge.dest
-  );
+  const { setPosition, setSize } = useSetBoardEdge(edge);
 
   const id = useId();
 
@@ -265,7 +257,7 @@ export function SelectionBox({
     };
   }, [documentOnMouseDown, onKeyDown]);
 
-  const [destDoc] = useDocument(edge.dest);
+  const destDoc = storage?.getDocument(edge.dest);
 
   useGesture(
     {
@@ -382,11 +374,11 @@ export function SelectionBox({
           return;
         }
 
-        if (dragOperation === "move" && boardEdge) {
+        if (dragOperation === "move") {
           requestAnimationFrame(() => {
             setPosition({
-              x: boardEdge?.position.x + tempTransform.x,
-              y: boardEdge?.position.y + tempTransform.y,
+              x: edge.position.x + tempTransform.x,
+              y: edge.position.y + tempTransform.y,
             });
           });
         }
@@ -395,13 +387,12 @@ export function SelectionBox({
         if (
           dragOperation !== "move" &&
           dragOperation !== "none" &&
-          boardEdge &&
           tempResize
         ) {
           requestAnimationFrame(() => {
             setPosition({
-              x: boardEdge?.position.x + tempTransform.x,
-              y: boardEdge?.position.y + tempTransform.y,
+              x: edge.position.x + tempTransform.x,
+              y: edge.position.y + tempTransform.y,
             });
 
             setSize(tempResize);
@@ -470,12 +461,8 @@ export function SelectionBox({
               ? getCursorFromDragOperation(dragOperation, true)
               : getCursorFromDragOperation(predictedDragOperation, false),
           overflow: "auto",
-          width: tempResize
-            ? tempResize.width
-            : boardEdge?.size.width || "auto",
-          height: tempResize
-            ? tempResize.height
-            : boardEdge?.size.height || "auto",
+          width: tempResize ? tempResize.width : edge.size.width || "auto",
+          height: tempResize ? tempResize.height : edge.size.height || "auto",
 
           borderWidth: 1,
           borderStyle: state === "hovered" ? "dashed" : "solid",

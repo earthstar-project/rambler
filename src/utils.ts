@@ -1,7 +1,7 @@
 import * as React from "react";
 import { isErr } from "earthstar";
 import { useCurrentAuthor, useStorage } from "react-earthstar";
-import { findEdgesAsync } from "earthstar-graph-db";
+import { findEdges } from "earthstar-graph-db";
 
 export function usePrevious<ValueType>(
   value: ValueType
@@ -19,18 +19,18 @@ export function useUnlinkDocFromBoard(docPath: string, boardPath: string) {
   const storage = useStorage();
   const [currentAuthor] = useCurrentAuthor();
 
-  return React.useCallback(async () => {
+  return React.useCallback( () => {
     if (!storage || !currentAuthor) {
       return;
     }
 
-    const placedResult = await findEdgesAsync(storage, {
+    const placedResult =  findEdges(storage, {
       source: boardPath,
       dest: docPath,
       kind: "PLACED",
     });
 
-    const sizedResult = await findEdgesAsync(storage, {
+    const sizedResult =  findEdges(storage, {
       source: boardPath,
       dest: docPath,
       kind: "PLACED",

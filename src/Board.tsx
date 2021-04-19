@@ -1,34 +1,21 @@
 import * as React from "react";
 import { useGesture } from "react-use-gesture";
 import { usePopper } from "react-popper";
-import { useBoardEdges, useEdges } from "./useEdges";
+import { useBoardEdges } from "./useEdges";
 import { TextNode } from "./TextNode";
 import { SelectionBox } from "./SelectionBox";
 import { BoardEdge, Position, Size } from "./types";
 import DocChooser from "./DocChooser";
-import { BoardContext } from "./BoardStore";
 
 // Get the coordinates of the top left and bottom right of the board using the document placements within it
-function useBoardCorners(boardPath: string) {
-  const placedEdges = useEdges<Position>({
-    source: boardPath,
-    kind: "PLACED",
-  });
-
-  const sizedEdges = useEdges<Size>({
-    source: boardPath,
-    kind: "SIZED",
-  });
-
-  return placedEdges.reduce(
+function getBoardCorners(edges: BoardEdge[]) {
+  return edges.reduce(
     (acc, edge) => {
-      const size = sizedEdges.find((sizedEdge) => sizedEdge.dest === edge.dest);
-
       return {
-        top: Math.min(edge.data.y, acc.top),
-        left: Math.min(edge.data.x, acc.left),
-        bottom: Math.max(edge.data.y + (size?.data?.height || 0), acc.bottom),
-        right: Math.max(edge.data.x + (size?.data?.width || 0), acc.right),
+        top: Math.min(edge.position.y, acc.top),
+        left: Math.min(edge.position.x, acc.left),
+        bottom: Math.max(edge.position.y + edge.size.height, acc.bottom),
+        right: Math.max(edge.position.x + edge.size.width, acc.right),
       };
     },
     { top: 0, left: 0, bottom: 0, right: 0 }
@@ -50,7 +37,7 @@ function renderEdge(edge: BoardEdge) {
   switch (getEdgeRenderType(edge)) {
     case "text":
       return (
-        <SelectionBox edge={edge}>
+        <SelectionBox key={edge.source} edge={edge}>
           <TextNode edge={edge} />
         </SelectionBox>
       );
@@ -333,8 +320,7 @@ export function Board({ boardPath }: { boardPath: string }) {
   );
 
   const edges = useBoardEdges(boardPath);
-
-  const boardCorners = useBoardCorners(boardPath);
+  const boardCorners = getBoardCorners(edges);
 
   // the size of the board as determined by its placed contents
   const intrinsicWidth = boardCorners.right - boardCorners.left;
@@ -386,10 +372,6 @@ export function Board({ boardPath }: { boardPath: string }) {
     }
   );
 
-  const { optimisticPositions } = React.useContext(BoardContext);
-
-  console.log("so confused 😭");
-
   return (
     <div>
       <div
@@ -438,8 +420,8 @@ export function Board({ boardPath }: { boardPath: string }) {
             <div
               key={edge.dest}
               style={{
-                top: optimisticPositions.get(edge.dest)?.y || edge.position.y,
-                left: optimisticPositions.get(edge.dest)?.x || edge.position.x,
+                top: edge.position.y,
+                left: edge.position.x,
                 position: "fixed",
               }}
             >
