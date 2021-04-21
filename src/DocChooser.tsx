@@ -84,6 +84,7 @@ export default function DocChooser({
     >
       <AddTextButton />
       <ImageUploadButton />
+      <MusicUploadButton />
     </DocChooserContext.Provider>
   );
 }
@@ -171,6 +172,43 @@ function ImageUploadButton() {
           }}
         >
           {"Upload image"}
+        </button>
+      </label>
+    </div>
+  );
+}
+
+function MusicUploadButton() {
+  const { onChange, result, fileName } = useReadFile();
+  const [currentAuthor] = useCurrentAuthor();
+  const labelRef = React.useRef<HTMLLabelElement | null>(null);
+  const { onDocChosen } = React.useContext(DocChooserContext);
+
+  React.useEffect(() => {
+    if (!result) {
+      return;
+    }
+
+    onDocChosen(result, `/music/${currentAuthor?.address}/${fileName}`);
+  }, [result, onDocChosen, currentAuthor?.address, fileName]);
+
+  return (
+    <div>
+      <input
+        style={{ visibility: "hidden", position: "absolute" }}
+        id={"image-upload-button"}
+        type={"file"}
+        onChange={onChange}
+      />
+      <label ref={labelRef} htmlFor={"image-upload-button"}>
+        <button
+          onClick={() => {
+            if (labelRef.current) {
+              labelRef.current.click();
+            }
+          }}
+        >
+          {"Upload music"}
         </button>
       </label>
     </div>

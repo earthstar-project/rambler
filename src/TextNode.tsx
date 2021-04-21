@@ -26,6 +26,7 @@ export function TextNode({ edge }: { edge: BoardEdge }) {
         overflow: "hidden",
         overscrollBehavior: "none",
         touchAction: "none",
+        pointerEvents: editing ? "auto" : "none",
       }}
       readOnly={!currentAuthor || !editing}
       value={textContent}

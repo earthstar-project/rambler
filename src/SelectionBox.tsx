@@ -477,14 +477,7 @@ export function SelectionBox({
         }}
       >
         <SelectionContext.Provider value={{ editing: state === "editing" }}>
-          <div
-            style={{
-              pointerEvents: state === "editing" ? "auto" : "none",
-              height: "100%",
-            }}
-          >
-            {children}
-          </div>
+          {children}
         </SelectionContext.Provider>
       </div>
       {state !== "blurred" ? (
