@@ -26,13 +26,21 @@ A hyperlinked spatial document browser and authoring environment.
   - ~~after drag ends, pop open a little dialog widget for adding a document~~
     - Existing (doc in workspace), opens a cutesy file browser
       - Have a section for linked but unplaced docs close in proximity to the cursor
-    - New (~~text~~, ~~image (triggers upload)~~, coloured box, midi)
+    - New (~~text~~, ~~image (triggers upload)~~, coloured box, midi, ~~audio~~)
 - give react-earthstar a utility to read earthstar URLs
   - use this so that this app can create and edit documents using other earthstar apps
 - text styling
+- Rotatable nodes
+- ~~Renders audio (mp3/ogg/wav) files~~
+  - Render something when there is no ID3 artwork attached to file
+  - Fade volume in and out according to viewport proximity
 - Renders midi nodes
-  - midi nodes become quieter and louder depending on their proximity to your viewport
+  - Need to submit a patch to timidity to fix their broken browserify stuff for this
 - Renders coloured boxes
 - Renders disconnected nodes
+  - Probably need this at the selection box level?
   - Lil old school red x box
 - A way to control the z-index of nodes
+- Normalise file upload names to be earthstar friendly
+- A way to delete, not just unlink docs
+- Transform author addresses in paths into shortname+identicon for legibility and space
